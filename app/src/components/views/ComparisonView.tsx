@@ -165,14 +165,6 @@ export default function ComparisonView({ keyword, count, onDataLoaded }: Compari
 
   const sections: ComparisonSection[] = [
     {
-      title: '구글 연관 검색어',
-      color: 'text-[var(--google)]',
-      bgColor: 'bg-blue-500/10',
-      source: 'google',
-      type: 'related',
-      data: analysisData.data.googleRelated,
-    },
-    {
       title: '구글 자동완성',
       color: 'text-[var(--google)]',
       bgColor: 'bg-blue-500/10',
@@ -181,12 +173,12 @@ export default function ComparisonView({ keyword, count, onDataLoaded }: Compari
       data: analysisData.data.googleAutocomplete,
     },
     {
-      title: '네이버 연관 검색어',
-      color: 'text-[var(--naver)]',
-      bgColor: 'bg-[var(--naver)]/10',
-      source: 'naver',
+      title: '구글 연관 검색어',
+      color: 'text-[var(--google)]',
+      bgColor: 'bg-blue-500/10',
+      source: 'google',
       type: 'related',
-      data: analysisData.data.naverRelated,
+      data: analysisData.data.googleRelated,
     },
     {
       title: '네이버 자동완성',
@@ -195,6 +187,14 @@ export default function ComparisonView({ keyword, count, onDataLoaded }: Compari
       source: 'naver',
       type: 'autocomplete',
       data: analysisData.data.naverAutocomplete,
+    },
+    {
+      title: '네이버 연관 검색어',
+      color: 'text-[var(--naver)]',
+      bgColor: 'bg-[var(--naver)]/10',
+      source: 'naver',
+      type: 'related',
+      data: analysisData.data.naverRelated,
     },
   ];
 

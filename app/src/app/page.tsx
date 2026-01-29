@@ -81,7 +81,7 @@ export default function Home() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className={selectedKeyword ? "w-full px-4 py-4" : "max-w-7xl mx-auto px-6 py-8"}>
         {!selectedKeyword ? (
           <DashboardView onDetail={handleViewDetails} />
         ) : (
