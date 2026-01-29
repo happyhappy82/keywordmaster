@@ -93,8 +93,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { keyword, targetSuffix, batchIndex = 0, phase1Keywords: existingPhase1Keywords } = body;
-    const BATCH_SIZE = 1; // 한 번에 1개 키워드만 (196음절 전체 확장, 타임아웃 방지)
+    const { keyword, targetSuffix, expandKeyword } = body;
 
     if (!keyword || typeof keyword !== 'string') {
       return NextResponse.json(
@@ -106,7 +105,7 @@ export async function POST(request: NextRequest) {
     const allResults: { keyword: string; volume: number; source: string; phase: string }[] = [];
     const seenKeywords = new Set<string>();
 
-    // 결과 추가 헬퍼 함수 (추가된 키워드 반환)
+    // 결과 추가 헬퍼 함수
     const addResults = (results: { keyword: string; volume: number }[], source: string, phase: string): string[] => {
       const added: string[] = [];
       for (const item of results) {
@@ -125,125 +124,94 @@ export async function POST(request: NextRequest) {
       return added;
     };
 
-    // targetSuffix가 있으면 점진적 타이핑 모드 (배치 지원)
-    if (targetSuffix && typeof targetSuffix === 'string') {
-      console.log('[NAVER EXPAND] Progressive typing mode - Batch:', batchIndex);
-      console.log('[NAVER EXPAND] Base keyword:', keyword);
-      console.log('[NAVER EXPAND] Target suffix:', targetSuffix);
+    // ========================================
+    // 모드 1: 개별 키워드 심층 확장 (196음절)
+    // ========================================
+    if (expandKeyword && typeof expandKeyword === 'string') {
+      console.log(`[NAVER EXPAND] Single keyword expand: "${expandKeyword}" with 196 syllables`);
 
-      let phase1Keywords: string[] = [];
+      let expandCount = 0;
+      for (let i = 0; i < KOREAN_SYLLABLES.length; i++) {
+        const syllable = KOREAN_SYLLABLES[i];
+        const expandedKeyword = `${expandKeyword} ${syllable}`;
 
-      // ========================================
-      // Phase 1: 첫 번째 배치(0)에서만 점진적 타이핑 실행
-      // ========================================
-      if (batchIndex === 0) {
-        const typingSequence = generateTypingSequence(targetSuffix);
-        console.log('[NAVER EXPAND] Typing sequence:', typingSequence);
-
-        for (let i = 0; i < typingSequence.length; i++) {
-          const partial = typingSequence[i];
-          const searchKeyword = `${keyword} ${partial}`;
-
-          try {
-            const results = await getNaverAutocomplete(searchKeyword);
-            const added = addResults(results, partial, 'phase1-typing');
-            phase1Keywords.push(...added);
-            console.log(`[NAVER EXPAND] Phase 1 (${i + 1}/${typingSequence.length}): "${searchKeyword}" → ${results.length} results, ${added.length} new`);
-          } catch (error) {
-            console.error(`[NAVER EXPAND] Error for "${searchKeyword}":`, error);
-          }
-
-          await delay(50);
+        try {
+          const results = await getNaverAutocomplete(expandedKeyword);
+          const added = addResults(results, `${syllable}`, 'deep-expand');
+          expandCount += added.length;
+        } catch (error) {
+          // 에러 무시
         }
 
-        console.log('[NAVER EXPAND] Phase 1 complete. Found', phase1Keywords.length, 'unique keywords');
-      } else {
-        // 이후 배치에서는 전달받은 Phase 1 키워드 사용
-        phase1Keywords = existingPhase1Keywords || [];
-        console.log('[NAVER EXPAND] Using existing Phase 1 keywords:', phase1Keywords.length);
+        await delay(20);
       }
 
-      // ========================================
-      // Phase 2: 배치별로 키워드 확장 (196개 음절 전체 사용)
-      // ========================================
-      const baseKeywordLower = `${keyword} ${targetSuffix}`.toLowerCase();
-      const allKeywordsToExpand = phase1Keywords.filter(k =>
-        k.toLowerCase() !== baseKeywordLower &&
-        k.toLowerCase() !== keyword.toLowerCase()
-      );
-
-      const startIdx = batchIndex * BATCH_SIZE;
-      const endIdx = Math.min(startIdx + BATCH_SIZE, allKeywordsToExpand.length);
-      const keywordsToExpand = allKeywordsToExpand.slice(startIdx, endIdx);
-      const hasMore = endIdx < allKeywordsToExpand.length;
-
-      console.log(`[NAVER EXPAND] Phase 2 Batch ${batchIndex}: keywords ${startIdx + 1}-${endIdx} of ${allKeywordsToExpand.length}`);
-
-      for (let kIdx = 0; kIdx < keywordsToExpand.length; kIdx++) {
-        const expandKeyword = keywordsToExpand[kIdx];
-        console.log(`[NAVER EXPAND] Phase 2 (${kIdx + 1}/${keywordsToExpand.length}): Expanding "${expandKeyword}" with 196 syllables`);
-
-        let expandCount = 0;
-
-        // 각 키워드에 대해 196개 음절 전체 붙이기 (BATCH_SIZE=1로 타임아웃 방지)
-        for (let i = 0; i < KOREAN_SYLLABLES.length; i++) {
-          const syllable = KOREAN_SYLLABLES[i];
-          const expandedKeyword = `${expandKeyword} ${syllable}`;
-
-          try {
-            const results = await getNaverAutocomplete(expandedKeyword);
-            const added = addResults(results, `${expandKeyword}+${syllable}`, 'phase2-reexpand');
-            expandCount += added.length;
-          } catch (error) {
-            // 에러 무시하고 계속
-          }
-
-          await delay(20); // 딜레이 약간 줄임
-        }
-
-        console.log(`[NAVER EXPAND] "${expandKeyword}" → ${expandCount} new keywords`);
-      }
-
-      // 배치 정보와 함께 반환
-      console.log('[NAVER EXPAND] Batch complete. Total:', allResults.length, 'Has more:', hasMore);
+      console.log(`[NAVER EXPAND] "${expandKeyword}" → ${expandCount} new keywords`);
 
       return NextResponse.json({
         success: true,
         data: allResults,
         count: allResults.length,
-        batchInfo: {
-          currentBatch: batchIndex,
-          hasMore,
-          totalKeywords: allKeywordsToExpand.length,
-          processedKeywords: endIdx,
-          phase1Keywords: allKeywordsToExpand, // 다음 배치에서 사용할 키워드 목록
-        },
+        expandedFrom: expandKeyword,
       });
+    }
 
-    } else {
-      // ========================================
-      // 단순 모드: 196개 음절 뒤에만 붙이기
-      // ========================================
-      console.log('[NAVER EXPAND] Simple expand mode for:', keyword);
-      console.log('[NAVER EXPAND] Total syllables:', KOREAN_SYLLABLES.length);
+    // ========================================
+    // 모드 2: 점진적 타이핑 (Phase 1만)
+    // ========================================
+    if (targetSuffix && typeof targetSuffix === 'string') {
+      console.log('[NAVER EXPAND] Phase 1 only - Progressive typing');
+      console.log('[NAVER EXPAND] Base keyword:', keyword);
+      console.log('[NAVER EXPAND] Target suffix:', targetSuffix);
 
-      for (let i = 0; i < KOREAN_SYLLABLES.length; i++) {
-        const syllable = KOREAN_SYLLABLES[i];
-        const expandedKeyword = `${keyword} ${syllable}`;
+      const typingSequence = generateTypingSequence(targetSuffix);
+      console.log('[NAVER EXPAND] Typing sequence:', typingSequence);
+
+      for (let i = 0; i < typingSequence.length; i++) {
+        const partial = typingSequence[i];
+        const searchKeyword = `${keyword} ${partial}`;
 
         try {
-          const results = await getNaverAutocomplete(expandedKeyword);
-          addResults(results, syllable, 'simple-suffix');
+          const results = await getNaverAutocomplete(searchKeyword);
+          addResults(results, partial, 'phase1-typing');
+          console.log(`[NAVER EXPAND] Phase 1 (${i + 1}/${typingSequence.length}): "${searchKeyword}" → ${results.length} results`);
         } catch (error) {
-          console.error(`[NAVER EXPAND] Error for ${syllable}:`, error);
-        }
-
-        if ((i + 1) % 20 === 0) {
-          console.log(`[NAVER EXPAND] Progress: ${i + 1}/${KOREAN_SYLLABLES.length}`);
+          console.error(`[NAVER EXPAND] Error for "${searchKeyword}":`, error);
         }
 
         await delay(50);
       }
+
+      console.log('[NAVER EXPAND] Phase 1 complete. Found', allResults.length, 'unique keywords');
+
+      return NextResponse.json({
+        success: true,
+        data: allResults,
+        count: allResults.length,
+      });
+    }
+
+    // ========================================
+    // 모드 3: 단순 확장 (196음절)
+    // ========================================
+    console.log('[NAVER EXPAND] Simple expand mode for:', keyword);
+
+    for (let i = 0; i < KOREAN_SYLLABLES.length; i++) {
+      const syllable = KOREAN_SYLLABLES[i];
+      const expandedKeyword = `${keyword} ${syllable}`;
+
+      try {
+        const results = await getNaverAutocomplete(expandedKeyword);
+        addResults(results, syllable, 'simple-suffix');
+      } catch (error) {
+        console.error(`[NAVER EXPAND] Error for ${syllable}:`, error);
+      }
+
+      if ((i + 1) % 20 === 0) {
+        console.log(`[NAVER EXPAND] Progress: ${i + 1}/${KOREAN_SYLLABLES.length}`);
+      }
+
+      await delay(50);
     }
 
     console.log('[NAVER EXPAND] Total unique keywords:', allResults.length);

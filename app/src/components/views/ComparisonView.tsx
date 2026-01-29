@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Keyboard, Globe, Zap, Loader2, AlertCircle, ChevronDown, ChevronUp, Sparkles, BarChart3, Download, Wand2, ArrowLeft, Search } from 'lucide-react';
 import { useKeywordAnalysis, useExpandedAutocomplete, useBulkVolumeQuery, useGenerateModifiers, KeywordItem, ExpandedItem } from '@/lib/hooks/useKeywordAnalysis';
 
@@ -34,9 +34,10 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
   const [deepExpandedNaver, setDeepExpandedNaver] = useState<ExpandedItem[]>([]);
   const [showDeepExpandedNaver, setShowDeepExpandedNaver] = useState(false);
   const [isDeepExpandingNaver, setIsDeepExpandingNaver] = useState(false);
-  const [deepExpandBatch, setDeepExpandBatch] = useState(0); // 현재 배치 번호
-  const [deepExpandHasMore, setDeepExpandHasMore] = useState(false); // 더 가져올 데이터가 있는지
-  const [deepExpandPhase1Keywords, setDeepExpandPhase1Keywords] = useState<string[]>([]); // Phase 1 키워드 저장
+  // 개별 키워드 심층 확장 상태
+  const [expandingKeywords, setExpandingKeywords] = useState<Set<string>>(new Set()); // 현재 확장 중인 키워드
+  const [expandedKeywords, setExpandedKeywords] = useState<Set<string>>(new Set()); // 확장 완료된 키워드
+  const [perKeywordResults, setPerKeywordResults] = useState<Record<string, ExpandedItem[]>>({}); // 키워드별 결과
 
   // 검색량 상태
   const [volumeMap, setVolumeMap] = useState<Record<string, number>>({});
@@ -85,10 +86,9 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
     }
   };
 
-  // 네이버 심층 확장 (점진적 타이핑 + 재확장) - 배치 지원
-  const handleDeepExpandNaver = async (nextBatch = false) => {
-    // 토글 모드: 데이터가 있고 더 가져올 게 없으면 토글
-    if (!nextBatch && deepExpandedNaver.length > 0 && !deepExpandHasMore) {
+  // 네이버 심층 확장 - Phase 1: 점진적 타이핑만
+  const handleDeepExpandNaver = async () => {
+    if (deepExpandedNaver.length > 0) {
       setShowDeepExpandedNaver(!showDeepExpandedNaver);
       return;
     }
@@ -102,7 +102,6 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
 
     const baseKeyword = parts[0];
     const targetSuffix = parts.slice(1).join(' ');
-    const batchToFetch = nextBatch ? deepExpandBatch + 1 : 0;
 
     setIsDeepExpandingNaver(true);
 
@@ -110,34 +109,50 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
       const response = await fetch('/api/naver/autocomplete-expand', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          keyword: baseKeyword,
-          targetSuffix,
-          batchIndex: batchToFetch,
-          phase1Keywords: batchToFetch > 0 ? deepExpandPhase1Keywords : undefined,
-        }),
+        body: JSON.stringify({ keyword: baseKeyword, targetSuffix }),
       });
 
       if (!response.ok) throw new Error('API error');
 
       const result = await response.json();
-
-      // 기존 데이터에 추가 (중복 제거)
-      const existingKeywords = new Set(deepExpandedNaver.map(d => d.keyword.toLowerCase()));
-      const newItems = (result.data || []).filter(
-        (item: ExpandedItem) => !existingKeywords.has(item.keyword.toLowerCase())
-      );
-
-      setDeepExpandedNaver(prev => [...prev, ...newItems]);
+      setDeepExpandedNaver(result.data || []);
       setShowDeepExpandedNaver(true);
-      setDeepExpandBatch(batchToFetch);
-      setDeepExpandHasMore(result.batchInfo?.hasMore || false);
-      setDeepExpandPhase1Keywords(result.batchInfo?.phase1Keywords || []);
     } catch (err) {
       console.error('Naver deep expand error:', err);
       alert('심층 확장 중 오류가 발생했습니다.');
     } finally {
       setIsDeepExpandingNaver(false);
+    }
+  };
+
+  // 개별 키워드 심층 확장 (196음절)
+  const handleExpandSingleKeyword = async (kw: string) => {
+    if (expandingKeywords.has(kw) || expandedKeywords.has(kw)) return;
+
+    setExpandingKeywords(prev => new Set(prev).add(kw));
+
+    try {
+      const response = await fetch('/api/naver/autocomplete-expand', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: kw, expandKeyword: kw }),
+      });
+
+      if (!response.ok) throw new Error('API error');
+
+      const result = await response.json();
+      const newResults: ExpandedItem[] = result.data || [];
+
+      setPerKeywordResults(prev => ({ ...prev, [kw]: newResults }));
+      setExpandedKeywords(prev => new Set(prev).add(kw));
+    } catch (err) {
+      console.error(`Expand error for "${kw}":`, err);
+    } finally {
+      setExpandingKeywords(prev => {
+        const next = new Set(prev);
+        next.delete(kw);
+        return next;
+      });
     }
   };
 
@@ -156,9 +171,9 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
     setShowExpandedNaver(false);
     setDeepExpandedNaver([]);
     setShowDeepExpandedNaver(false);
-    setDeepExpandBatch(0);
-    setDeepExpandHasMore(false);
-    setDeepExpandPhase1Keywords([]);
+    setExpandingKeywords(new Set());
+    setExpandedKeywords(new Set());
+    setPerKeywordResults({});
     setVolumeMap({});
     setVolumesFetched(false);
     setModifiers([]);
@@ -259,6 +274,13 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
     // 네이버 심층 확장 키워드 추가
     for (const item of deepExpandedNaver) {
       allKeywords.push({ keyword: item.keyword, source: 'naver' });
+    }
+
+    // 개별 키워드 심층 확장 결과 추가
+    for (const items of Object.values(perKeywordResults)) {
+      for (const item of items) {
+        allKeywords.push({ keyword: item.keyword, source: 'naver' });
+      }
     }
 
     try {
@@ -494,44 +516,27 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
                       {showPrefixGoogle ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
                     </button>
                   )}
-                  {/* 네이버 심층 확장 버튼 */}
+                  {/* 네이버 심층 확장 버튼 (Phase 1: 점진적 타이핑) */}
                   {!isGoogle && (
-                    <>
-                      <button
-                        onClick={() => handleDeepExpandNaver(false)}
-                        disabled={isDeepExpandingNaver}
-                        className={`text-[9px] font-black uppercase tracking-tighter px-2 py-1 rounded transition-all flex items-center gap-1 ${
-                          showDeepExpandedNaver
-                            ? 'bg-orange-500 text-white'
-                            : 'bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 border border-orange-500/20'
-                        }`}
-                      >
-                        {isDeepExpandingNaver && deepExpandBatch === 0 ? (
-                          <Loader2 size={10} className="animate-spin" />
-                        ) : (
-                          <Zap size={10} />
-                        )}
-                        {deepExpandedNaver.length > 0
-                          ? `심층${deepExpandBatch + 1} (${deepExpandedNaver.length}개)`
-                          : '심층 확장'}
-                        {showDeepExpandedNaver ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-                      </button>
-                      {/* 다음 배치 버튼 - hasMore가 true일 때만 표시 */}
-                      {deepExpandHasMore && deepExpandedNaver.length > 0 && (
-                        <button
-                          onClick={() => handleDeepExpandNaver(true)}
-                          disabled={isDeepExpandingNaver}
-                          className="text-[9px] font-black uppercase tracking-tighter px-2 py-1 rounded transition-all flex items-center gap-1 bg-orange-600/20 text-orange-300 hover:bg-orange-600/40 border border-orange-500/30"
-                        >
-                          {isDeepExpandingNaver ? (
-                            <Loader2 size={10} className="animate-spin" />
-                          ) : (
-                            <Zap size={10} />
-                          )}
-                          심층{deepExpandBatch + 2}
-                        </button>
+                    <button
+                      onClick={handleDeepExpandNaver}
+                      disabled={isDeepExpandingNaver}
+                      className={`text-[9px] font-black uppercase tracking-tighter px-2 py-1 rounded transition-all flex items-center gap-1 ${
+                        showDeepExpandedNaver
+                          ? 'bg-orange-500 text-white'
+                          : 'bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 border border-orange-500/20'
+                      }`}
+                    >
+                      {isDeepExpandingNaver ? (
+                        <Loader2 size={10} className="animate-spin" />
+                      ) : (
+                        <Zap size={10} />
                       )}
-                    </>
+                      {deepExpandedNaver.length > 0
+                        ? `심층 ${deepExpandedNaver.length}개`
+                        : '심층 확장'}
+                      {showDeepExpandedNaver ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+                    </button>
                   )}
                   <span className="text-[10px] font-black bg-white/5 px-2 py-1 rounded-md text-slate-400 border border-white/5">
                     {section.data.length} Results
@@ -663,53 +668,112 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
                         </>
                       )}
 
-                      {/* 네이버 심층 확장 데이터 */}
+                      {/* 네이버 심층 확장 데이터 (점진적 타이핑 결과) */}
                       {!isGoogle && showDeepExpandedNaver && sortedDeepExpandedNaver.length > 0 && (
                         <>
                           <tr className="bg-orange-500/10">
                             <td colSpan={2} className="px-5 py-2 text-[10px] font-black uppercase tracking-widest text-orange-400">
-                              심층 확장 배치 {deepExpandBatch + 1} - {sortedDeepExpandedNaver.length}개
+                              심층 확장 (점진적 타이핑) - {sortedDeepExpandedNaver.length}개
                               {volumesFetched && <span className="ml-2 text-orange-300">(검색량순)</span>}
-                              {deepExpandHasMore && <span className="ml-2 text-orange-300">(계속 로드 가능)</span>}
                             </td>
                           </tr>
-                          {sortedDeepExpandedNaver.map((item, kIdx) => (
-                            <tr
-                              key={`deep-${kIdx}`}
-                              className="hover:bg-white/[0.04] group transition-all bg-orange-500/5"
-                            >
-                              <td className="px-5 py-3">
-                                <div className="flex flex-col gap-1.5">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400">
-                                      {item.source.length > 10 ? item.source.slice(0, 10) + '...' : item.source}
-                                    </span>
-                                    <span className="font-bold text-slate-200 group-hover:text-white transition-colors break-words">
-                                      {item.keyword}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <a
-                                      href={`https://search.naver.com/search.naver?query=${encodeURIComponent(item.keyword)}`}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="text-[9px] font-black uppercase tracking-tighter px-2.5 py-1 rounded bg-[var(--naver)]/10 text-[var(--naver)] border border-[var(--naver)]/20 hover:bg-[var(--naver)] hover:text-white transition-all flex items-center gap-1.5"
-                                    >
-                                      <Zap size={10} /> NAVER 검색
-                                    </a>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="px-5 py-3 text-right font-mono text-slate-500 text-xs font-medium">
-                                {volumesFetched
-                                  ? (getVolume(item.keyword, 'naver') > 0
-                                      ? getVolume(item.keyword, 'naver').toLocaleString()
-                                      : '-')
-                                  : <span className="text-slate-600">-</span>
-                                }
-                              </td>
-                            </tr>
-                          ))}
+                          {sortedDeepExpandedNaver.map((item, kIdx) => {
+                            const isExpanding = expandingKeywords.has(item.keyword);
+                            const isExpanded = expandedKeywords.has(item.keyword);
+                            const subResults = perKeywordResults[item.keyword] || [];
+                            const sortedSubResults = volumesFetched
+                              ? [...subResults].sort((a, b) => getVolume(b.keyword, 'naver') - getVolume(a.keyword, 'naver'))
+                              : subResults;
+
+                            return (
+                              <React.Fragment key={`deep-${kIdx}`}>
+                                <tr className="hover:bg-white/[0.04] group transition-all bg-orange-500/5">
+                                  <td className="px-5 py-3">
+                                    <div className="flex flex-col gap-1.5">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400">
+                                          {item.source.length > 10 ? item.source.slice(0, 10) + '...' : item.source}
+                                        </span>
+                                        <span className="font-bold text-slate-200 group-hover:text-white transition-colors break-words">
+                                          {item.keyword}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <a
+                                          href={`https://search.naver.com/search.naver?query=${encodeURIComponent(item.keyword)}`}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="text-[9px] font-black uppercase tracking-tighter px-2.5 py-1 rounded bg-[var(--naver)]/10 text-[var(--naver)] border border-[var(--naver)]/20 hover:bg-[var(--naver)] hover:text-white transition-all flex items-center gap-1.5"
+                                        >
+                                          <Zap size={10} /> NAVER 검색
+                                        </a>
+                                        <button
+                                          onClick={() => handleExpandSingleKeyword(item.keyword)}
+                                          disabled={isExpanding || isExpanded}
+                                          className={`text-[9px] font-black uppercase tracking-tighter px-2.5 py-1 rounded transition-all flex items-center gap-1.5 ${
+                                            isExpanded
+                                              ? 'bg-orange-500 text-white'
+                                              : 'bg-orange-500/10 text-orange-400 border border-orange-500/20 hover:bg-orange-500/30'
+                                          }`}
+                                        >
+                                          {isExpanding ? (
+                                            <Loader2 size={10} className="animate-spin" />
+                                          ) : (
+                                            <Zap size={10} />
+                                          )}
+                                          {isExpanded ? `확장 ${subResults.length}개` : isExpanding ? '확장 중...' : '심층 확장'}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-5 py-3 text-right font-mono text-slate-500 text-xs font-medium">
+                                    {volumesFetched
+                                      ? (getVolume(item.keyword, 'naver') > 0
+                                          ? getVolume(item.keyword, 'naver').toLocaleString()
+                                          : '-')
+                                      : <span className="text-slate-600">-</span>
+                                    }
+                                  </td>
+                                </tr>
+                                {/* 개별 키워드 심층 확장 결과 */}
+                                {isExpanded && sortedSubResults.map((sub, sIdx) => (
+                                  <tr
+                                    key={`deep-${kIdx}-sub-${sIdx}`}
+                                    className="hover:bg-white/[0.04] group transition-all bg-orange-900/10"
+                                  >
+                                    <td className="px-5 py-2 pl-10">
+                                      <div className="flex flex-col gap-1">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-orange-900/30 text-orange-300">
+                                            {sub.source}
+                                          </span>
+                                          <span className="text-sm font-medium text-slate-300 group-hover:text-white transition-colors break-words">
+                                            {sub.keyword}
+                                          </span>
+                                        </div>
+                                        <a
+                                          href={`https://search.naver.com/search.naver?query=${encodeURIComponent(sub.keyword)}`}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="text-[9px] font-black uppercase tracking-tighter px-2 py-0.5 rounded bg-[var(--naver)]/10 text-[var(--naver)] border border-[var(--naver)]/20 hover:bg-[var(--naver)] hover:text-white transition-all inline-flex items-center gap-1 w-fit"
+                                        >
+                                          <Zap size={9} /> NAVER
+                                        </a>
+                                      </div>
+                                    </td>
+                                    <td className="px-5 py-2 text-right font-mono text-slate-500 text-xs font-medium">
+                                      {volumesFetched
+                                        ? (getVolume(sub.keyword, 'naver') > 0
+                                            ? getVolume(sub.keyword, 'naver').toLocaleString()
+                                            : '-')
+                                        : <span className="text-slate-600">-</span>
+                                      }
+                                    </td>
+                                  </tr>
+                                ))}
+                              </React.Fragment>
+                            );
+                          })}
                         </>
                       )}
 
