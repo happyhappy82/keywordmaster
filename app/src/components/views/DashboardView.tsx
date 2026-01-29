@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, Sparkles, ArrowRight, Hash } from 'lucide-react';
+import { Search, Sparkles, ArrowRight, Hash, BarChart3, Loader2 } from 'lucide-react';
 
 interface DashboardViewProps {
   onDetail: (keyword: string, count: number) => void;
@@ -9,9 +9,20 @@ interface DashboardViewProps {
 
 const KEYWORD_COUNT_OPTIONS = [10, 20, 30, 40, 50];
 
+interface VolumeResult {
+  keyword: string;
+  google: number;
+  naver: number;
+}
+
 export default function DashboardView({ onDetail }: DashboardViewProps) {
   const [analyzeKeyword, setAnalyzeKeyword] = useState('');
   const [keywordCount, setKeywordCount] = useState(30);
+
+  // 검색량 조회 상태
+  const [volumeKeyword, setVolumeKeyword] = useState('');
+  const [volumeResult, setVolumeResult] = useState<VolumeResult | null>(null);
+  const [isLoadingVolume, setIsLoadingVolume] = useState(false);
 
   const handleAnalyze = () => {
     if (analyzeKeyword.trim()) {
@@ -25,8 +36,119 @@ export default function DashboardView({ onDetail }: DashboardViewProps) {
     }
   };
 
+  // 단일 키워드 검색량 조회
+  const handleVolumeSearch = async () => {
+    if (!volumeKeyword.trim()) return;
+
+    setIsLoadingVolume(true);
+    setVolumeResult(null);
+
+    try {
+      const response = await fetch('/api/volume/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          keywords: [
+            { keyword: volumeKeyword.trim(), source: 'google' },
+            { keyword: volumeKeyword.trim(), source: 'naver' },
+          ],
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const cleanKeyword = volumeKeyword.trim().toLowerCase().replace(/\s+/g, '');
+        setVolumeResult({
+          keyword: volumeKeyword.trim(),
+          google: data.volumeMap[`google:${cleanKeyword}`] || 0,
+          naver: data.volumeMap[`naver:${cleanKeyword}`] || 0,
+        });
+      }
+    } catch (error) {
+      console.error('Volume search error:', error);
+    } finally {
+      setIsLoadingVolume(false);
+    }
+  };
+
+  const handleVolumeKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleVolumeSearch();
+    }
+  };
+
   return (
-    <div className="flex items-center justify-center min-h-[calc(100vh-200px)]">
+    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)] gap-6">
+      {/* 단일 키워드 검색량 조회 */}
+      <div className="w-full max-w-4xl bg-[var(--surface)] rounded-2xl border border-[var(--border)] p-6 shadow-lg">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 bg-green-500/20 rounded-xl">
+            <BarChart3 size={20} className="text-green-400" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-white">검색량 조회</h3>
+            <p className="text-slate-500 text-xs">키워드 1개의 Google/Naver 월간 검색량을 확인합니다.</p>
+          </div>
+        </div>
+
+        <div className="flex gap-3">
+          <div className="relative flex-1">
+            <Search
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"
+              size={18}
+            />
+            <input
+              type="text"
+              value={volumeKeyword}
+              onChange={(e) => setVolumeKeyword(e.target.value)}
+              onKeyDown={handleVolumeKeyDown}
+              className="w-full bg-[var(--background)] border border-[var(--border)] rounded-xl pl-11 pr-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all placeholder:text-slate-600"
+              placeholder="검색량 조회할 키워드 입력"
+            />
+          </div>
+          <button
+            onClick={handleVolumeSearch}
+            disabled={!volumeKeyword.trim() || isLoadingVolume}
+            className="px-6 py-3 bg-green-600 hover:bg-green-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm transition-all flex items-center gap-2"
+          >
+            {isLoadingVolume ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                조회 중...
+              </>
+            ) : (
+              <>
+                <BarChart3 size={16} />
+                검색량 조회
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* 검색량 결과 */}
+        {volumeResult && (
+          <div className="mt-4 p-4 bg-[var(--background)] rounded-xl border border-[var(--border)]">
+            <div className="text-sm font-bold text-white mb-3">
+              &quot;{volumeResult.keyword}&quot; 월간 검색량
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                <div className="text-xs text-blue-400 font-bold mb-1">Google</div>
+                <div className="text-2xl font-black text-white">
+                  {volumeResult.google > 0 ? volumeResult.google.toLocaleString() : '-'}
+                </div>
+              </div>
+              <div className="p-3 bg-[var(--naver)]/10 rounded-lg border border-[var(--naver)]/20">
+                <div className="text-xs text-[var(--naver)] font-bold mb-1">Naver</div>
+                <div className="text-2xl font-black text-white">
+                  {volumeResult.naver > 0 ? volumeResult.naver.toLocaleString() : '-'}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* 키워드 분석 검색 섹션 */}
       <div className="w-full max-w-4xl bg-gradient-to-br from-[var(--primary)]/20 via-[var(--surface)] to-[var(--surface)] rounded-3xl border border-[var(--primary)]/30 p-12 shadow-2xl">
         <div className="flex items-center gap-4 mb-8">
@@ -36,7 +158,7 @@ export default function DashboardView({ onDetail }: DashboardViewProps) {
           <div>
             <h2 className="text-3xl font-black text-white">키워드 분석</h2>
             <p className="text-slate-400 text-base mt-1">
-              분석할 키워드를 입력하면 Google/Naver 연관검색어와 자동완성을 수집합니다.
+              분석할 키워드를 입력하면 Google/Naver 자동완성 키워드를 수집합니다.
             </p>
           </div>
         </div>
@@ -88,7 +210,7 @@ export default function DashboardView({ onDetail }: DashboardViewProps) {
             ))}
           </div>
           <p className="text-xs text-slate-500 mt-3">
-            각 플랫폼(Google/Naver)별 연관검색어와 자동완성에서 최대 {keywordCount}개씩 가져옵니다.
+            각 플랫폼(Google/Naver)별 자동완성에서 최대 {keywordCount}개씩 가져옵니다.
           </p>
         </div>
 
