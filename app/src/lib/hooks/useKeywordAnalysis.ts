@@ -6,23 +6,19 @@ interface KeywordItem {
   keyword: string;
   volume: number;
   source: 'google' | 'naver';
-  type: 'related' | 'autocomplete';
+  type: 'autocomplete';
 }
 
 interface AnalysisResult {
   success: boolean;
   keyword: string;
   data: {
-    googleRelated: KeywordItem[];
     googleAutocomplete: KeywordItem[];
-    naverRelated: KeywordItem[];
     naverAutocomplete: KeywordItem[];
   };
   allData: KeywordItem[];
   summary: {
-    googleRelated: number;
     googleAutocomplete: number;
-    naverRelated: number;
     naverAutocomplete: number;
     total: number;
   };

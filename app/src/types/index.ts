@@ -24,7 +24,6 @@ export interface ComparisonSection {
   color: string;
   bgColor: string;
   source: 'google' | 'naver';
-  type: 'related' | 'autocomplete';
   data: ComparisonItem[];
 }
 
@@ -88,7 +87,6 @@ export interface AnalysisResult {
   keyword: string;
   google: {
     volume: number;
-    related: ComparisonItem[];
     autocomplete: ComparisonItem[];
   };
   naver: {
@@ -97,7 +95,6 @@ export interface AnalysisResult {
       mobile: number;
       total: number;
     };
-    related: ComparisonItem[];
     autocomplete: ComparisonItem[];
   };
 }

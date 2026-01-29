@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getGoogleAutocomplete, getGoogleRelatedKeywords } from '@/lib/api/dataforseo';
-import { getNaverAutocomplete, getNaverRelatedKeywords } from '@/lib/api/naver';
+import { getGoogleAutocomplete } from '@/lib/api/dataforseo';
+import { getNaverAutocomplete } from '@/lib/api/naver';
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,24 +14,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 모든 소스에서 병렬로 데이터 가져오기 (키워드만, 검색량은 별도 조회)
-    const [googleRelated, googleAutocomplete, naverRelated, naverAutocomplete] = await Promise.allSettled([
-      getGoogleRelatedKeywords(keyword, limit),
+    // 자동완성만 병렬로 가져오기 (연관검색어 제거 - 비용 절감)
+    const [googleAutocomplete, naverAutocomplete] = await Promise.allSettled([
       getGoogleAutocomplete(keyword),
-      getNaverRelatedKeywords(keyword, limit),
       getNaverAutocomplete(keyword),
     ]);
 
     const formatResult = (
       result: PromiseSettledResult<{ keyword: string; volume: number }[]>,
       source: 'google' | 'naver',
-      type: 'related' | 'autocomplete'
+      type: 'autocomplete'
     ) => {
       if (result.status === 'fulfilled') {
-        // 검색량은 0으로 초기화 (별도 조회 필요)
         return result.value.slice(0, limit).map(item => ({
           keyword: item.keyword,
-          volume: 0, // 검색량은 나중에 별도 조회
+          volume: 0,
           source,
           type,
         }));
@@ -41,17 +38,13 @@ export async function POST(request: NextRequest) {
     };
 
     const results = {
-      googleRelated: formatResult(googleRelated, 'google', 'related'),
       googleAutocomplete: formatResult(googleAutocomplete, 'google', 'autocomplete'),
-      naverRelated: formatResult(naverRelated, 'naver', 'related'),
       naverAutocomplete: formatResult(naverAutocomplete, 'naver', 'autocomplete'),
     };
 
     // 전체 데이터 통합
     const allData = [
-      ...results.googleRelated,
       ...results.googleAutocomplete,
-      ...results.naverRelated,
       ...results.naverAutocomplete,
     ];
 
@@ -61,9 +54,7 @@ export async function POST(request: NextRequest) {
       data: results,
       allData,
       summary: {
-        googleRelated: results.googleRelated.length,
         googleAutocomplete: results.googleAutocomplete.length,
-        naverRelated: results.naverRelated.length,
         naverAutocomplete: results.naverAutocomplete.length,
         total: allData.length,
       },

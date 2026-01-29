@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Search, Keyboard, Globe, Zap, Loader2, AlertCircle, ChevronDown, ChevronUp, Sparkles, BarChart3, Download, Wand2, ArrowLeft } from 'lucide-react';
+import { Keyboard, Globe, Zap, Loader2, AlertCircle, ChevronDown, ChevronUp, Sparkles, BarChart3, Download, Wand2, ArrowLeft, Search } from 'lucide-react';
 import { useKeywordAnalysis, useExpandedAutocomplete, useBulkVolumeQuery, useGenerateModifiers, KeywordItem, ExpandedItem } from '@/lib/hooks/useKeywordAnalysis';
 
 interface ComparisonViewProps {
@@ -18,7 +18,6 @@ interface ComparisonSection {
   color: string;
   bgColor: string;
   source: 'google' | 'naver';
-  type: 'related' | 'autocomplete';
   data: KeywordItem[];
 }
 
@@ -122,21 +121,14 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
       // 2. 수식어 + 키워드 조합 생성
       const prefixCombinations = generatedModifiers.map(modifier => `${modifier} ${keyword}`);
 
-      // 3. 각 조합으로 자동완성 조회
+      // 3. 각 조합으로 자동완성 조회 (실제 자동완성에 있는 것만 표시)
       const googleResults: ExpandedItem[] = [];
       const naverResults: ExpandedItem[] = [];
 
       // 딜레이 함수
       const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-      // 기본 조합 먼저 추가
-      prefixCombinations.forEach(combo => {
-        const modifier = combo.split(' ')[0];
-        googleResults.push({ keyword: combo, volume: 0, source: modifier });
-        naverResults.push({ keyword: combo, volume: 0, source: modifier });
-      });
-
-      // Google 자동완성 (병렬)
+      // Google 자동완성 (병렬) - 결과가 있는 것만 추가
       const googlePromises = prefixCombinations.map(async (query) => {
         const modifier = query.split(' ')[0];
         try {
@@ -147,7 +139,8 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
           });
           if (res.ok) {
             const data = await res.json();
-            if (data.data) {
+            if (data.data && data.data.length > 0) {
+              // 자동완성 결과가 있으면 해당 결과들만 추가
               return data.data.map((item: { keyword: string }) => ({
                 keyword: item.keyword,
                 volume: 0,
@@ -158,13 +151,13 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
         } catch (err) {
           console.error(`Google autocomplete error for "${query}":`, err);
         }
-        return [];
+        return []; // 결과 없으면 빈 배열
       });
 
       const googleAllResults = await Promise.all(googlePromises);
       googleAllResults.forEach(items => googleResults.push(...items));
 
-      // Naver 자동완성 (순차 처리 - rate limit 회피)
+      // Naver 자동완성 (순차 처리) - 결과가 있는 것만 추가
       for (const query of prefixCombinations) {
         const modifier = query.split(' ')[0];
         try {
@@ -176,6 +169,7 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
           if (res.ok) {
             const data = await res.json();
             if (data.data && data.data.length > 0) {
+              // 자동완성 결과가 있으면 해당 결과들만 추가
               data.data.forEach((item: { keyword: string }) => {
                 naverResults.push({
                   keyword: item.keyword,
@@ -253,9 +247,6 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
     return volumeMap[key] || 0;
   };
 
-  const getIcon = (type: 'related' | 'autocomplete') => {
-    return type === 'related' ? Search : Keyboard;
-  };
 
   // 로딩 상태
   if (isLoading) {
@@ -306,32 +297,14 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
       color: 'text-[var(--google)]',
       bgColor: 'bg-blue-500/10',
       source: 'google',
-      type: 'autocomplete',
       data: analysisData.data.googleAutocomplete,
-    },
-    {
-      title: '구글 연관 검색어',
-      color: 'text-[var(--google)]',
-      bgColor: 'bg-blue-500/10',
-      source: 'google',
-      type: 'related',
-      data: analysisData.data.googleRelated,
     },
     {
       title: '네이버 자동완성',
       color: 'text-[var(--naver)]',
       bgColor: 'bg-[var(--naver)]/10',
       source: 'naver',
-      type: 'autocomplete',
       data: analysisData.data.naverAutocomplete,
-    },
-    {
-      title: '네이버 연관 검색어',
-      color: 'text-[var(--naver)]',
-      bgColor: 'bg-[var(--naver)]/10',
-      source: 'naver',
-      type: 'related',
-      data: analysisData.data.naverRelated,
     },
   ];
 
@@ -433,11 +406,9 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
         </div>
       </div>
 
-      {/* 4-Grid Layout */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      {/* 2-Grid Layout */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {sections.map((section, sIdx) => {
-          const Icon = getIcon(section.type);
-          const isAutocomplete = section.type === 'autocomplete';
           const isGoogle = section.source === 'google';
 
           // 확장 관련 상태
@@ -457,13 +428,12 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
               >
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-[var(--background)] rounded-xl border border-[var(--border)] shadow-inner">
-                    <Icon className={section.color} size={18} />
+                    <Keyboard className={section.color} size={18} />
                   </div>
                   <h3 className="text-sm font-black text-white">{section.title}</h3>
                 </div>
                 <div className="flex items-center gap-2">
-                  {isAutocomplete && (
-                    <button
+                  <button
                       onClick={handleExpand}
                       disabled={isExpanding}
                       className={`text-[9px] font-black uppercase tracking-tighter px-2 py-1 rounded transition-all flex items-center gap-1 ${
@@ -482,7 +452,6 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
                         : '확장 ㄱ~ㅎ'}
                       {showExpanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
                     </button>
-                  )}
                   <span className="text-[10px] font-black bg-white/5 px-2 py-1 rounded-md text-slate-400 border border-white/5">
                     {section.data.length} Results
                   </span>
@@ -491,7 +460,7 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
 
               {/* Table */}
               <div className="flex-1 overflow-y-auto custom-scrollbar">
-                {section.data.length === 0 && (!isAutocomplete || expandedData.length === 0) ? (
+                {section.data.length === 0 && expandedData.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-slate-600">
                     <AlertCircle size={24} className="mb-2" />
                     <p className="text-sm">데이터 없음</p>
@@ -555,7 +524,7 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
                       ))}
 
                       {/* 확장 자동완성 데이터 (ㄱ~ㅎ) */}
-                      {isAutocomplete && showExpanded && expandedData.length > 0 && (
+                      {showExpanded && expandedData.length > 0 && (
                         <>
                           <tr className="bg-[var(--primary)]/10">
                             <td colSpan={2} className="px-5 py-2 text-[10px] font-black uppercase tracking-widest text-[var(--primary)]">
@@ -614,7 +583,7 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
                       )}
 
                       {/* 수식어 자동완성 데이터 */}
-                      {isAutocomplete && ((isGoogle && showPrefixGoogle && prefixGoogle.length > 0) || (!isGoogle && showPrefixNaver && prefixNaver.length > 0)) && (
+                      {((isGoogle && showPrefixGoogle && prefixGoogle.length > 0) || (!isGoogle && showPrefixNaver && prefixNaver.length > 0)) && (
                         <>
                           <tr className="bg-purple-500/10">
                             <td colSpan={2} className="px-5 py-2 text-[10px] font-black uppercase tracking-widest text-purple-400">
