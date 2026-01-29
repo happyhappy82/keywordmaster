@@ -467,6 +467,69 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
           const sortedDeepExpandedNaver = !isGoogle ? sortByVolume(deepExpandedNaver) : [];
           const sortedPrefixGoogle = isGoogle ? sortByVolume(prefixGoogle) : [];
 
+          // 통합 정렬 리스트 (검색량 조회 후 모든 키워드를 검색량순으로 정렬)
+          const unifiedSortedList = (() => {
+            if (!volumesFetched) return [];
+
+            const items: Array<{ keyword: string; badge: string; badgeClass: string; bgClass: string }> = [];
+
+            // 기본 자동완성
+            for (const item of section.data) {
+              items.push({ keyword: item.keyword, badge: '', badgeClass: '', bgClass: '' });
+            }
+
+            // 확장 ㄱ~ㅎ
+            if (showExpanded) {
+              for (const item of expandedData) {
+                items.push({ keyword: item.keyword, badge: item.source, badgeClass: 'bg-[var(--primary)]/20 text-[var(--primary)]', bgClass: 'bg-[var(--primary)]/5' });
+              }
+            }
+
+            // 수식어 (구글만)
+            if (isGoogle && showPrefixGoogle) {
+              for (const item of prefixGoogle) {
+                items.push({ keyword: item.keyword, badge: '수식어', badgeClass: 'bg-purple-500/20 text-purple-400', bgClass: 'bg-purple-500/5' });
+              }
+              // 수식어 심층 확장 결과
+              for (const item of prefixGoogle) {
+                if (expandedKeywords.has(item.keyword)) {
+                  for (const sub of (perKeywordResults[item.keyword] || [])) {
+                    items.push({ keyword: sub.keyword, badge: sub.source, badgeClass: 'bg-purple-900/30 text-purple-300', bgClass: 'bg-purple-900/10' });
+                  }
+                }
+              }
+            }
+
+            // 심층 확장 (네이버만)
+            if (!isGoogle && showDeepExpandedNaver) {
+              for (const item of deepExpandedNaver) {
+                items.push({ keyword: item.keyword, badge: item.source.length > 10 ? item.source.slice(0, 10) + '...' : item.source, badgeClass: 'bg-orange-500/20 text-orange-400', bgClass: 'bg-orange-500/5' });
+              }
+              // 심층 확장 하위 결과
+              for (const item of deepExpandedNaver) {
+                if (expandedKeywords.has(item.keyword)) {
+                  for (const sub of (perKeywordResults[item.keyword] || [])) {
+                    items.push({ keyword: sub.keyword, badge: sub.source, badgeClass: 'bg-orange-900/30 text-orange-300', bgClass: 'bg-orange-900/10' });
+                  }
+                }
+              }
+            }
+
+            // 중복 제거
+            const seen = new Set<string>();
+            const unique = items.filter(item => {
+              const key = item.keyword.toLowerCase();
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+
+            // 검색량 기준 정렬 (높은 순)
+            unique.sort((a, b) => getVolume(b.keyword, section.source) - getVolume(a.keyword, section.source));
+
+            return unique;
+          })();
+
           return (
             <div
               key={sIdx}
@@ -572,6 +635,63 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
                       </tr>
                     </thead>
                     <tbody className="text-sm divide-y divide-[var(--border)]/20">
+                      {volumesFetched ? (
+                        <>
+                          <tr className="bg-emerald-500/10">
+                            <td colSpan={2} className="px-5 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-400">
+                              전체 키워드 검색량순 - {unifiedSortedList.length}개
+                            </td>
+                          </tr>
+                          {unifiedSortedList.map((item, idx) => (
+                            <tr
+                              key={`unified-${idx}`}
+                              className={`hover:bg-white/[0.04] group transition-all ${item.bgClass}`}
+                            >
+                              <td className="px-5 py-3">
+                                <div className="flex flex-col gap-1.5">
+                                  <div className="flex items-center gap-2">
+                                    {item.badge && (
+                                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${item.badgeClass}`}>
+                                        {item.badge}
+                                      </span>
+                                    )}
+                                    <span className="font-bold text-slate-200 group-hover:text-white transition-colors break-words">
+                                      {item.keyword}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {isGoogle ? (
+                                      <a
+                                        href={`https://www.google.com/search?q=${encodeURIComponent(item.keyword)}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-[9px] font-black uppercase tracking-tighter px-2.5 py-1 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500 hover:text-white transition-all flex items-center gap-1.5"
+                                      >
+                                        <Globe size={10} /> GOOGLE 검색
+                                      </a>
+                                    ) : (
+                                      <a
+                                        href={`https://search.naver.com/search.naver?query=${encodeURIComponent(item.keyword)}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-[9px] font-black uppercase tracking-tighter px-2.5 py-1 rounded bg-[var(--naver)]/10 text-[var(--naver)] border border-[var(--naver)]/20 hover:bg-[var(--naver)] hover:text-white transition-all flex items-center gap-1.5"
+                                      >
+                                        <Zap size={10} /> NAVER 검색
+                                      </a>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-5 py-3 text-right font-mono text-slate-500 text-xs font-medium">
+                                {getVolume(item.keyword, section.source) > 0
+                                  ? getVolume(item.keyword, section.source).toLocaleString()
+                                  : '-'}
+                              </td>
+                            </tr>
+                          ))}
+                        </>
+                      ) : (
+                        <>
                       {/* 수식어 자동완성 데이터 (구글만) - 맨 위 */}
                       {isGoogle && showPrefixGoogle && sortedPrefixGoogle.length > 0 && (
                         <>
@@ -887,7 +1007,8 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
                           })}
                         </>
                       )}
-
+                        </>
+                      )}
                     </tbody>
                   </table>
                 )}
