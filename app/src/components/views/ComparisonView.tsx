@@ -339,31 +339,6 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
 
         {/* 버튼 그룹 */}
         <div className="flex items-center gap-3">
-          {/* 수식어 생성 버튼 */}
-          <button
-            onClick={handleGenerateModifiers}
-            disabled={modifiersMutation.isPending || isFetchingPrefix}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all ${
-              modifiersMutation.isPending || isFetchingPrefix
-                ? 'bg-slate-700 text-slate-400 cursor-wait'
-                : modifiers.length > 0
-                ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30 hover:bg-purple-500/30'
-                : 'bg-purple-600 text-white hover:bg-purple-500 shadow-lg shadow-purple-600/30'
-            }`}
-          >
-            {modifiersMutation.isPending || isFetchingPrefix ? (
-              <>
-                <Loader2 size={18} className="animate-spin" />
-                {isFetchingPrefix ? '자동완성 조회 중...' : 'AI 생성 중...'}
-              </>
-            ) : (
-              <>
-                <Wand2 size={18} />
-                {modifiers.length > 0 ? `수식어 ${prefixGoogle.length}개` : '수식어 생성'}
-              </>
-            )}
-          </button>
-
           {/* CSV 내보내기 버튼 */}
           {onExport && (
             <button
@@ -454,6 +429,28 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
                         : '확장 ㄱ~ㅎ'}
                       {showExpanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
                     </button>
+                  {/* 구글 수식어 생성 버튼 */}
+                  {isGoogle && (
+                    <button
+                      onClick={handleGenerateModifiers}
+                      disabled={modifiersMutation.isPending || isFetchingPrefix}
+                      className={`text-[9px] font-black uppercase tracking-tighter px-2 py-1 rounded transition-all flex items-center gap-1 ${
+                        showPrefixGoogle
+                          ? 'bg-purple-500 text-white'
+                          : 'bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 border border-purple-500/20'
+                      }`}
+                    >
+                      {modifiersMutation.isPending || isFetchingPrefix ? (
+                        <Loader2 size={10} className="animate-spin" />
+                      ) : (
+                        <Wand2 size={10} />
+                      )}
+                      {prefixGoogle.length > 0
+                        ? `수식어 ${prefixGoogle.length}개`
+                        : '수식어'}
+                      {showPrefixGoogle ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+                    </button>
+                  )}
                   {/* 네이버 심층 확장 버튼 */}
                   {!isGoogle && (
                     <button
