@@ -39,6 +39,13 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
   const [modifiers, setModifiers] = useState<string[]>([]);
   const [showModifiers, setShowModifiers] = useState(false);
 
+  // 수식어 자동완성 상태
+  const [prefixGoogle, setPrefixGoogle] = useState<ExpandedItem[]>([]);
+  const [prefixNaver, setPrefixNaver] = useState<ExpandedItem[]>([]);
+  const [showPrefixGoogle, setShowPrefixGoogle] = useState(false);
+  const [showPrefixNaver, setShowPrefixNaver] = useState(false);
+  const [isFetchingPrefix, setIsFetchingPrefix] = useState(false);
+
   const googleExpandMutation = useExpandedAutocomplete();
   const naverExpandMutation = useExpandedAutocomplete();
   const bulkVolumeMutation = useBulkVolumeQuery();
@@ -90,21 +97,102 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
     setVolumesFetched(false);
     setModifiers([]);
     setShowModifiers(false);
+    setPrefixGoogle([]);
+    setPrefixNaver([]);
+    setShowPrefixGoogle(false);
+    setShowPrefixNaver(false);
   }, [keyword]);
 
-  // 수식어 생성
+  // 수식어 생성 및 자동완성 조회
   const handleGenerateModifiers = async () => {
     if (modifiers.length > 0) {
       setShowModifiers(!showModifiers);
+      setShowPrefixGoogle(!showPrefixGoogle);
+      setShowPrefixNaver(!showPrefixNaver);
       return;
     }
     try {
-      const result = await modifiersMutation.mutateAsync(keyword);
-      setModifiers(result);
+      setIsFetchingPrefix(true);
+
+      // 1. 수식어 생성
+      const generatedModifiers = await modifiersMutation.mutateAsync(keyword);
+      setModifiers(generatedModifiers);
       setShowModifiers(true);
+
+      // 2. 각 수식어로 자동완성 조회 (병렬 처리)
+      const googleResults: ExpandedItem[] = [];
+      const naverResults: ExpandedItem[] = [];
+
+      // 수식어별 자동완성 조회
+      const fetchPromises = generatedModifiers.map(async (modifier) => {
+        const query = `${modifier} ${keyword}`;
+
+        // Google 자동완성
+        try {
+          const googleRes = await fetch('/api/google/autocomplete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ keyword: query }),
+          });
+          if (googleRes.ok) {
+            const googleData = await googleRes.json();
+            if (googleData.data) {
+              googleData.data.forEach((item: { keyword: string }) => {
+                googleResults.push({
+                  keyword: item.keyword,
+                  volume: 0,
+                  source: modifier,
+                });
+              });
+            }
+          }
+        } catch (err) {
+          console.error(`Google autocomplete error for "${modifier}":`, err);
+        }
+
+        // Naver 자동완성
+        try {
+          const naverRes = await fetch('/api/naver/autocomplete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ keyword: query }),
+          });
+          if (naverRes.ok) {
+            const naverData = await naverRes.json();
+            if (naverData.data) {
+              naverData.data.forEach((item: { keyword: string }) => {
+                naverResults.push({
+                  keyword: item.keyword,
+                  volume: 0,
+                  source: modifier,
+                });
+              });
+            }
+          }
+        } catch (err) {
+          console.error(`Naver autocomplete error for "${modifier}":`, err);
+        }
+      });
+
+      await Promise.all(fetchPromises);
+
+      // 중복 제거
+      const uniqueGoogle = googleResults.filter((item, idx, arr) =>
+        arr.findIndex(i => i.keyword === item.keyword) === idx
+      );
+      const uniqueNaver = naverResults.filter((item, idx, arr) =>
+        arr.findIndex(i => i.keyword === item.keyword) === idx
+      );
+
+      setPrefixGoogle(uniqueGoogle);
+      setPrefixNaver(uniqueNaver);
+      setShowPrefixGoogle(true);
+      setShowPrefixNaver(true);
+      setIsFetchingPrefix(false);
     } catch (err) {
       console.error('Modifier generation error:', err);
       alert('수식어 생성에 실패했습니다. Gemini API 키를 확인해주세요.');
+      setIsFetchingPrefix(false);
     }
   };
 
@@ -124,6 +212,14 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
       allKeywords.push({ keyword: item.keyword, source: 'google' });
     }
     for (const item of expandedNaver) {
+      allKeywords.push({ keyword: item.keyword, source: 'naver' });
+    }
+
+    // 수식어 자동완성 키워드 추가
+    for (const item of prefixGoogle) {
+      allKeywords.push({ keyword: item.keyword, source: 'google' });
+    }
+    for (const item of prefixNaver) {
       allKeywords.push({ keyword: item.keyword, source: 'naver' });
     }
 
@@ -256,24 +352,24 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
           {/* 수식어 생성 버튼 */}
           <button
             onClick={handleGenerateModifiers}
-            disabled={modifiersMutation.isPending}
+            disabled={modifiersMutation.isPending || isFetchingPrefix}
             className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all ${
-              modifiersMutation.isPending
+              modifiersMutation.isPending || isFetchingPrefix
                 ? 'bg-slate-700 text-slate-400 cursor-wait'
                 : modifiers.length > 0
                 ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30 hover:bg-purple-500/30'
                 : 'bg-purple-600 text-white hover:bg-purple-500 shadow-lg shadow-purple-600/30'
             }`}
           >
-            {modifiersMutation.isPending ? (
+            {modifiersMutation.isPending || isFetchingPrefix ? (
               <>
                 <Loader2 size={18} className="animate-spin" />
-                AI 생성 중...
+                {isFetchingPrefix ? '자동완성 조회 중...' : 'AI 생성 중...'}
               </>
             ) : (
               <>
                 <Wand2 size={18} />
-                {modifiers.length > 0 ? `수식어 ${modifiers.length}개` : '수식어 생성'}
+                {modifiers.length > 0 ? `수식어 ${modifiers.length}개 (G:${prefixGoogle.length} N:${prefixNaver.length})` : '수식어 생성'}
               </>
             )}
           </button>
@@ -321,40 +417,6 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
           </button>
         </div>
       </div>
-
-      {/* 수식어 섹션 */}
-      {showModifiers && modifiers.length > 0 && (
-        <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Wand2 size={18} className="text-purple-400" />
-              <h3 className="font-bold text-purple-400">AI 생성 수식어</h3>
-              <span className="text-xs text-purple-400/60">
-                "{modifiers[0]} {keyword}", "{modifiers[1]} {keyword}" 형태로 검색됩니다
-              </span>
-            </div>
-            <button
-              onClick={() => setShowModifiers(false)}
-              className="text-xs text-slate-500 hover:text-white transition-colors"
-            >
-              접기
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {modifiers.map((modifier, idx) => (
-              <a
-                key={idx}
-                href={`https://www.google.com/search?q=${encodeURIComponent(modifier + ' ' + keyword)}`}
-                target="_blank"
-                rel="noreferrer"
-                className="px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/40 border border-purple-500/30 rounded-lg text-sm text-purple-300 hover:text-white transition-all cursor-pointer"
-              >
-                {modifier} {keyword}
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* 4-Grid Layout */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -494,6 +556,65 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
                                 <div className="flex flex-col gap-1.5">
                                   <div className="flex items-center gap-2">
                                     <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[var(--primary)]/20 text-[var(--primary)]">
+                                      {item.source}
+                                    </span>
+                                    <span className="font-bold text-slate-200 group-hover:text-white transition-colors truncate">
+                                      {item.keyword}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {isGoogle ? (
+                                      <a
+                                        href={`https://www.google.com/search?q=${encodeURIComponent(item.keyword)}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-[9px] font-black uppercase tracking-tighter px-2.5 py-1 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500 hover:text-white transition-all flex items-center gap-1.5"
+                                      >
+                                        <Globe size={10} /> GOOGLE 검색
+                                      </a>
+                                    ) : (
+                                      <a
+                                        href={`https://search.naver.com/search.naver?query=${encodeURIComponent(item.keyword)}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-[9px] font-black uppercase tracking-tighter px-2.5 py-1 rounded bg-[var(--naver)]/10 text-[var(--naver)] border border-[var(--naver)]/20 hover:bg-[var(--naver)] hover:text-white transition-all flex items-center gap-1.5"
+                                      >
+                                        <Zap size={10} /> NAVER 검색
+                                      </a>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-5 py-3 text-right font-mono text-slate-500 text-xs font-medium">
+                                {volumesFetched
+                                  ? (getVolume(item.keyword, isGoogle ? 'google' : 'naver') > 0
+                                      ? getVolume(item.keyword, isGoogle ? 'google' : 'naver').toLocaleString()
+                                      : '-')
+                                  : <span className="text-slate-600">-</span>
+                                }
+                              </td>
+                            </tr>
+                          ))}
+                        </>
+                      )}
+
+                      {/* 수식어 자동완성 데이터 */}
+                      {isAutocomplete && ((isGoogle && showPrefixGoogle && prefixGoogle.length > 0) || (!isGoogle && showPrefixNaver && prefixNaver.length > 0)) && (
+                        <>
+                          <tr className="bg-purple-500/10">
+                            <td colSpan={2} className="px-5 py-2 text-[10px] font-black uppercase tracking-widest text-purple-400">
+                              수식어 자동완성 - {isGoogle ? prefixGoogle.length : prefixNaver.length}개
+                            </td>
+                          </tr>
+                          {(isGoogle ? prefixGoogle : prefixNaver).map((item, kIdx) => (
+                            <tr
+                              key={`prefix-${kIdx}`}
+                              className="hover:bg-white/[0.04] group transition-all bg-purple-500/5"
+                            >
+                              <td className="px-5 py-3">
+                                <div className="flex flex-col gap-1.5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">
                                       {item.source}
                                     </span>
                                     <span className="font-bold text-slate-200 group-hover:text-white transition-colors truncate">
