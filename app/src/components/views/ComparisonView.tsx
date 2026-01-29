@@ -38,6 +38,7 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
   const [expandingKeywords, setExpandingKeywords] = useState<Set<string>>(new Set()); // 현재 확장 중인 키워드
   const [expandedKeywords, setExpandedKeywords] = useState<Set<string>>(new Set()); // 확장 완료된 키워드
   const [perKeywordResults, setPerKeywordResults] = useState<Record<string, ExpandedItem[]>>({}); // 키워드별 결과
+  const [perKeywordPlatform, setPerKeywordPlatform] = useState<Record<string, 'google' | 'naver'>>({}); // 키워드별 플랫폼
 
   // 검색량 상태
   const [volumeMap, setVolumeMap] = useState<Record<string, number>>({});
@@ -125,14 +126,18 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
     }
   };
 
-  // 개별 키워드 심층 확장 (196음절)
-  const handleExpandSingleKeyword = async (kw: string) => {
+  // 개별 키워드 심층 확장 (196음절) - 구글/네이버 모두 지원
+  const handleExpandSingleKeyword = async (kw: string, platform: 'google' | 'naver' = 'naver') => {
     if (expandingKeywords.has(kw) || expandedKeywords.has(kw)) return;
 
     setExpandingKeywords(prev => new Set(prev).add(kw));
 
+    const apiUrl = platform === 'google'
+      ? '/api/google/autocomplete-expand'
+      : '/api/naver/autocomplete-expand';
+
     try {
-      const response = await fetch('/api/naver/autocomplete-expand', {
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ keyword: kw, expandKeyword: kw }),
@@ -144,6 +149,7 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
       const newResults: ExpandedItem[] = result.data || [];
 
       setPerKeywordResults(prev => ({ ...prev, [kw]: newResults }));
+      setPerKeywordPlatform(prev => ({ ...prev, [kw]: platform }));
       setExpandedKeywords(prev => new Set(prev).add(kw));
     } catch (err) {
       console.error(`Expand error for "${kw}":`, err);
@@ -174,6 +180,7 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
     setExpandingKeywords(new Set());
     setExpandedKeywords(new Set());
     setPerKeywordResults({});
+    setPerKeywordPlatform({});
     setVolumeMap({});
     setVolumesFetched(false);
     setModifiers([]);
@@ -277,9 +284,10 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
     }
 
     // 개별 키워드 심층 확장 결과 추가
-    for (const items of Object.values(perKeywordResults)) {
+    for (const [parentKw, items] of Object.entries(perKeywordResults)) {
+      const platform = perKeywordPlatform[parentKw] || 'naver';
       for (const item of items) {
-        allKeywords.push({ keyword: item.keyword, source: 'naver' });
+        allKeywords.push({ keyword: item.keyword, source: platform });
       }
     }
 
@@ -564,6 +572,109 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
                       </tr>
                     </thead>
                     <tbody className="text-sm divide-y divide-[var(--border)]/20">
+                      {/* 수식어 자동완성 데이터 (구글만) - 맨 위 */}
+                      {isGoogle && showPrefixGoogle && sortedPrefixGoogle.length > 0 && (
+                        <>
+                          <tr className="bg-purple-500/10">
+                            <td colSpan={2} className="px-5 py-2 text-[10px] font-black uppercase tracking-widest text-purple-400">
+                              수식어 자동완성 - {sortedPrefixGoogle.length}개 {volumesFetched && '(검색량순)'}
+                            </td>
+                          </tr>
+                          {sortedPrefixGoogle.map((item, kIdx) => {
+                            const isExpandingItem = expandingKeywords.has(item.keyword);
+                            const isExpandedItem = expandedKeywords.has(item.keyword);
+                            const subResults = perKeywordResults[item.keyword] || [];
+                            const sortedSubResults = volumesFetched
+                              ? [...subResults].sort((a, b) => getVolume(b.keyword, 'google') - getVolume(a.keyword, 'google'))
+                              : subResults;
+
+                            return (
+                              <React.Fragment key={`prefix-${kIdx}`}>
+                                <tr className="hover:bg-white/[0.04] group transition-all bg-purple-500/5">
+                                  <td className="px-5 py-3">
+                                    <div className="flex flex-col gap-1.5">
+                                      <span className="font-bold text-slate-200 group-hover:text-white transition-colors break-words">
+                                        {item.keyword}
+                                      </span>
+                                      <div className="flex items-center gap-2">
+                                        <a
+                                          href={`https://www.google.com/search?q=${encodeURIComponent(item.keyword)}`}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="text-[9px] font-black uppercase tracking-tighter px-2.5 py-1 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500 hover:text-white transition-all flex items-center gap-1.5"
+                                        >
+                                          <Globe size={10} /> GOOGLE 검색
+                                        </a>
+                                        <button
+                                          onClick={() => handleExpandSingleKeyword(item.keyword, 'google')}
+                                          disabled={isExpandingItem || isExpandedItem}
+                                          className={`text-[9px] font-black uppercase tracking-tighter px-2.5 py-1 rounded transition-all flex items-center gap-1.5 ${
+                                            isExpandedItem
+                                              ? 'bg-purple-500 text-white'
+                                              : 'bg-purple-500/10 text-purple-400 border border-purple-500/20 hover:bg-purple-500/30'
+                                          }`}
+                                        >
+                                          {isExpandingItem ? (
+                                            <Loader2 size={10} className="animate-spin" />
+                                          ) : (
+                                            <Zap size={10} />
+                                          )}
+                                          {isExpandedItem ? `확장 ${subResults.length}개` : isExpandingItem ? '확장 중...' : '심층 확장'}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-5 py-3 text-right font-mono text-slate-500 text-xs font-medium">
+                                    {volumesFetched
+                                      ? (getVolume(item.keyword, 'google') > 0
+                                          ? getVolume(item.keyword, 'google').toLocaleString()
+                                          : '-')
+                                      : <span className="text-slate-600">-</span>
+                                    }
+                                  </td>
+                                </tr>
+                                {/* 개별 키워드 심층 확장 결과 */}
+                                {isExpandedItem && sortedSubResults.map((sub, sIdx) => (
+                                  <tr
+                                    key={`prefix-${kIdx}-sub-${sIdx}`}
+                                    className="hover:bg-white/[0.04] group transition-all bg-purple-900/10"
+                                  >
+                                    <td className="px-5 py-2 pl-10">
+                                      <div className="flex flex-col gap-1">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-purple-900/30 text-purple-300">
+                                            {sub.source}
+                                          </span>
+                                          <span className="text-sm font-medium text-slate-300 group-hover:text-white transition-colors break-words">
+                                            {sub.keyword}
+                                          </span>
+                                        </div>
+                                        <a
+                                          href={`https://www.google.com/search?q=${encodeURIComponent(sub.keyword)}`}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="text-[9px] font-black uppercase tracking-tighter px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500 hover:text-white transition-all inline-flex items-center gap-1 w-fit"
+                                        >
+                                          <Globe size={9} /> GOOGLE
+                                        </a>
+                                      </div>
+                                    </td>
+                                    <td className="px-5 py-2 text-right font-mono text-slate-500 text-xs font-medium">
+                                      {volumesFetched
+                                        ? (getVolume(sub.keyword, 'google') > 0
+                                            ? getVolume(sub.keyword, 'google').toLocaleString()
+                                            : '-')
+                                        : <span className="text-slate-600">-</span>
+                                      }
+                                    </td>
+                                  </tr>
+                                ))}
+                              </React.Fragment>
+                            );
+                          })}
+                        </>
+                      )}
+
                       {/* 기본 자동완성 데이터 */}
                       {sortedSectionData.map((item, kIdx) => (
                         <tr
@@ -777,48 +888,6 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
                         </>
                       )}
 
-                      {/* 수식어 자동완성 데이터 (구글만) */}
-                      {isGoogle && showPrefixGoogle && sortedPrefixGoogle.length > 0 && (
-                        <>
-                          <tr className="bg-purple-500/10">
-                            <td colSpan={2} className="px-5 py-2 text-[10px] font-black uppercase tracking-widest text-purple-400">
-                              수식어 자동완성 - {sortedPrefixGoogle.length}개 {volumesFetched && '(검색량순)'}
-                            </td>
-                          </tr>
-                          {sortedPrefixGoogle.map((item, kIdx) => (
-                            <tr
-                              key={`prefix-${kIdx}`}
-                              className="hover:bg-white/[0.04] group transition-all bg-purple-500/5"
-                            >
-                              <td className="px-5 py-3">
-                                <div className="flex flex-col gap-1.5">
-                                  <span className="font-bold text-slate-200 group-hover:text-white transition-colors break-words">
-                                    {item.keyword}
-                                  </span>
-                                  <div className="flex items-center gap-2">
-                                    <a
-                                      href={`https://www.google.com/search?q=${encodeURIComponent(item.keyword)}`}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="text-[9px] font-black uppercase tracking-tighter px-2.5 py-1 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500 hover:text-white transition-all flex items-center gap-1.5"
-                                    >
-                                      <Globe size={10} /> GOOGLE 검색
-                                    </a>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="px-5 py-3 text-right font-mono text-slate-500 text-xs font-medium">
-                                {volumesFetched
-                                  ? (getVolume(item.keyword, 'google') > 0
-                                      ? getVolume(item.keyword, 'google').toLocaleString()
-                                      : '-')
-                                  : <span className="text-slate-600">-</span>
-                                }
-                              </td>
-                            </tr>
-                          ))}
-                        </>
-                      )}
                     </tbody>
                   </table>
                 )}

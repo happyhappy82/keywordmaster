@@ -39,7 +39,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { keyword } = body;
+    const { keyword, expandKeyword } = body;
 
     if (!keyword || typeof keyword !== 'string') {
       return NextResponse.json(
@@ -48,52 +48,84 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[GOOGLE EXPAND] Starting expanded autocomplete for:', keyword);
-    console.log('[GOOGLE EXPAND] Total syllables to check:', KOREAN_SYLLABLES.length);
-
-    // 모든 음절에 대해 자동완성 조회 (병렬 처리)
     const allResults: { keyword: string; volume: number; source: string }[] = [];
     const seenKeywords = new Set<string>();
 
-    // 병렬 처리 (한 번에 10개씩)
+    const addResults = (results: { keyword: string; volume: number }[], source: string) => {
+      for (const item of results) {
+        const normalizedKeyword = item.keyword.toLowerCase();
+        if (!seenKeywords.has(normalizedKeyword)) {
+          seenKeywords.add(normalizedKeyword);
+          allResults.push({ keyword: item.keyword, volume: 0, source });
+        }
+      }
+    };
+
+    // ========================================
+    // 모드 1: 개별 키워드 심층 확장 (196음절)
+    // ========================================
+    if (expandKeyword && typeof expandKeyword === 'string') {
+      console.log(`[GOOGLE EXPAND] Single keyword expand: "${expandKeyword}"`);
+
+      const batchSize = 10;
+      for (let i = 0; i < KOREAN_SYLLABLES.length; i += batchSize) {
+        const batch = KOREAN_SYLLABLES.slice(i, i + batchSize);
+
+        const batchPromises = batch.map(async (syllable) => {
+          try {
+            const results = await getGoogleAutocomplete(`${expandKeyword} ${syllable}`);
+            return { syllable, results };
+          } catch {
+            return { syllable, results: [] };
+          }
+        });
+
+        const batchResults = await Promise.all(batchPromises);
+        for (const { syllable, results } of batchResults) {
+          addResults(results, syllable);
+        }
+
+        await delay(100);
+      }
+
+      console.log(`[GOOGLE EXPAND] "${expandKeyword}" → ${allResults.length} keywords`);
+
+      return NextResponse.json({
+        success: true,
+        data: allResults,
+        count: allResults.length,
+        expandedFrom: expandKeyword,
+      });
+    }
+
+    // ========================================
+    // 모드 2: 기본 196음절 확장
+    // ========================================
+    console.log('[GOOGLE EXPAND] Simple expand for:', keyword);
+
     const batchSize = 10;
     for (let i = 0; i < KOREAN_SYLLABLES.length; i += batchSize) {
       const batch = KOREAN_SYLLABLES.slice(i, i + batchSize);
 
       const batchPromises = batch.map(async (syllable) => {
-        const expandedKeyword = `${keyword} ${syllable}`;
         try {
-          const results = await getGoogleAutocomplete(expandedKeyword);
+          const results = await getGoogleAutocomplete(`${keyword} ${syllable}`);
           return { syllable, results };
-        } catch (error) {
-          console.error(`[GOOGLE EXPAND] Error for ${syllable}:`, error);
+        } catch {
           return { syllable, results: [] };
         }
       });
 
       const batchResults = await Promise.all(batchPromises);
-
       for (const { syllable, results } of batchResults) {
-        for (const item of results) {
-          const normalizedKeyword = item.keyword.toLowerCase();
-          if (!seenKeywords.has(normalizedKeyword)) {
-            seenKeywords.add(normalizedKeyword);
-            allResults.push({
-              keyword: item.keyword,
-              volume: 0,
-              source: syllable,
-            });
-          }
-        }
+        addResults(results, syllable);
       }
 
-      console.log(`[GOOGLE EXPAND] Batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(KOREAN_SYLLABLES.length / batchSize)} completed`);
-
-      // 배치 간 딜레이 (무료 API rate limit 방지)
+      console.log(`[GOOGLE EXPAND] Batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(KOREAN_SYLLABLES.length / batchSize)}`);
       await delay(100);
     }
 
-    console.log('[GOOGLE EXPAND] Total unique keywords:', allResults.length);
+    console.log('[GOOGLE EXPAND] Total:', allResults.length);
 
     return NextResponse.json({
       success: true,
