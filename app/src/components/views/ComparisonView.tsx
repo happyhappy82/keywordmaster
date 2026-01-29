@@ -421,6 +421,22 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
           const handleExpand = isGoogle ? handleExpandGoogle : handleExpandNaver;
           const isExpanding = isGoogle ? googleExpandMutation.isPending : naverExpandMutation.isPending;
 
+          // 검색량 기준 정렬 함수
+          const sortByVolume = <T extends { keyword: string }>(data: T[]): T[] => {
+            if (!volumesFetched) return data;
+            return [...data].sort((a, b) => {
+              const volA = getVolume(a.keyword, section.source);
+              const volB = getVolume(b.keyword, section.source);
+              return volB - volA; // 높은 순
+            });
+          };
+
+          // 정렬된 데이터
+          const sortedSectionData = sortByVolume(section.data);
+          const sortedExpandedData = sortByVolume(expandedData);
+          const sortedDeepExpandedNaver = !isGoogle ? sortByVolume(deepExpandedNaver) : [];
+          const sortedPrefixGoogle = isGoogle ? sortByVolume(prefixGoogle) : [];
+
           return (
             <div
               key={sIdx}
@@ -525,7 +541,7 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
 
               {/* Table */}
               <div className="flex-1 overflow-y-auto custom-scrollbar">
-                {section.data.length === 0 && expandedData.length === 0 ? (
+                {sortedSectionData.length === 0 && sortedExpandedData.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-slate-600">
                     <AlertCircle size={24} className="mb-2" />
                     <p className="text-sm">데이터 없음</p>
@@ -544,7 +560,7 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
                     </thead>
                     <tbody className="text-sm divide-y divide-[var(--border)]/20">
                       {/* 기본 자동완성 데이터 */}
-                      {section.data.map((item, kIdx) => (
+                      {sortedSectionData.map((item, kIdx) => (
                         <tr
                           key={kIdx}
                           className="hover:bg-white/[0.04] group transition-all"
@@ -589,14 +605,14 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
                       ))}
 
                       {/* 확장 자동완성 데이터 (ㄱ~ㅎ) */}
-                      {showExpanded && expandedData.length > 0 && (
+                      {showExpanded && sortedExpandedData.length > 0 && (
                         <>
                           <tr className="bg-[var(--primary)]/10">
                             <td colSpan={2} className="px-5 py-2 text-[10px] font-black uppercase tracking-widest text-[var(--primary)]">
-                              확장 자동완성 (ㄱ~ㅎ) - {expandedData.length}개
+                              확장 자동완성 (ㄱ~ㅎ) - {sortedExpandedData.length}개 {volumesFetched && '(검색량순)'}
                             </td>
                           </tr>
-                          {expandedData.map((item, kIdx) => (
+                          {sortedExpandedData.map((item, kIdx) => (
                             <tr
                               key={`expanded-${kIdx}`}
                               className="hover:bg-white/[0.04] group transition-all bg-[var(--primary)]/5"
@@ -648,15 +664,16 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
                       )}
 
                       {/* 네이버 심층 확장 데이터 */}
-                      {!isGoogle && showDeepExpandedNaver && deepExpandedNaver.length > 0 && (
+                      {!isGoogle && showDeepExpandedNaver && sortedDeepExpandedNaver.length > 0 && (
                         <>
                           <tr className="bg-orange-500/10">
                             <td colSpan={2} className="px-5 py-2 text-[10px] font-black uppercase tracking-widest text-orange-400">
-                              심층 확장 배치 {deepExpandBatch + 1} - {deepExpandedNaver.length}개
+                              심층 확장 배치 {deepExpandBatch + 1} - {sortedDeepExpandedNaver.length}개
+                              {volumesFetched && <span className="ml-2 text-orange-300">(검색량순)</span>}
                               {deepExpandHasMore && <span className="ml-2 text-orange-300">(계속 로드 가능)</span>}
                             </td>
                           </tr>
-                          {deepExpandedNaver.map((item, kIdx) => (
+                          {sortedDeepExpandedNaver.map((item, kIdx) => (
                             <tr
                               key={`deep-${kIdx}`}
                               className="hover:bg-white/[0.04] group transition-all bg-orange-500/5"
@@ -697,14 +714,14 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
                       )}
 
                       {/* 수식어 자동완성 데이터 (구글만) */}
-                      {isGoogle && showPrefixGoogle && prefixGoogle.length > 0 && (
+                      {isGoogle && showPrefixGoogle && sortedPrefixGoogle.length > 0 && (
                         <>
                           <tr className="bg-purple-500/10">
                             <td colSpan={2} className="px-5 py-2 text-[10px] font-black uppercase tracking-widest text-purple-400">
-                              수식어 자동완성 - {prefixGoogle.length}개
+                              수식어 자동완성 - {sortedPrefixGoogle.length}개 {volumesFetched && '(검색량순)'}
                             </td>
                           </tr>
-                          {prefixGoogle.map((item, kIdx) => (
+                          {sortedPrefixGoogle.map((item, kIdx) => (
                             <tr
                               key={`prefix-${kIdx}`}
                               className="hover:bg-white/[0.04] group transition-all bg-purple-500/5"
