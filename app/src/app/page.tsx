@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react';
 import DashboardView from '@/components/views/DashboardView';
 import ComparisonView from '@/components/views/ComparisonView';
 import { useExportCsv, KeywordItem } from '@/lib/hooks/useKeywordAnalysis';
-import { ArrowLeft, Download, Sparkles } from 'lucide-react';
+import { ArrowLeft, Sparkles } from 'lucide-react';
 
 export default function Home() {
   const [selectedKeyword, setSelectedKeyword] = useState<string | null>(null);
@@ -67,16 +67,6 @@ export default function Home() {
             </h1>
           </div>
 
-          {selectedKeyword && analysisData && (
-            <button
-              onClick={handleExport}
-              disabled={exportCsv.isPending}
-              className="flex items-center gap-2 px-4 py-2 bg-[var(--primary)] hover:bg-[var(--primary-hover)] rounded-lg font-medium transition-colors disabled:opacity-50"
-            >
-              <Download size={16} />
-              {exportCsv.isPending ? '내보내는 중...' : 'CSV 내보내기'}
-            </button>
-          )}
         </div>
       </header>
 
@@ -89,6 +79,8 @@ export default function Home() {
             keyword={selectedKeyword}
             count={selectedCount}
             onDataLoaded={handleDataLoaded}
+            onExport={handleExport}
+            isExporting={exportCsv.isPending}
           />
         )}
       </main>

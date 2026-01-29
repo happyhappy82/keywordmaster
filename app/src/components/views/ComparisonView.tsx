@@ -1,13 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Search, Keyboard, Globe, Zap, Loader2, AlertCircle, ChevronDown, ChevronUp, Sparkles, BarChart3 } from 'lucide-react';
+import { Search, Keyboard, Globe, Zap, Loader2, AlertCircle, ChevronDown, ChevronUp, Sparkles, BarChart3, Download } from 'lucide-react';
 import { useKeywordAnalysis, useExpandedAutocomplete, useBulkVolumeQuery, KeywordItem, ExpandedItem } from '@/lib/hooks/useKeywordAnalysis';
 
 interface ComparisonViewProps {
   keyword: string;
   count: number;
   onDataLoaded?: (data: KeywordItem[]) => void;
+  onExport?: () => void;
+  isExporting?: boolean;
 }
 
 interface ComparisonSection {
@@ -19,7 +21,7 @@ interface ComparisonSection {
   data: KeywordItem[];
 }
 
-export default function ComparisonView({ keyword, count, onDataLoaded }: ComparisonViewProps) {
+export default function ComparisonView({ keyword, count, onDataLoaded, onExport, isExporting }: ComparisonViewProps) {
   const { data: analysisData, isLoading, error } = useKeywordAnalysis(keyword, count);
 
   // 확장 자동완성 상태
@@ -217,35 +219,50 @@ export default function ComparisonView({ keyword, count, onDataLoaded }: Compari
           </div>
         </div>
 
-        {/* 검색량 조회 버튼 */}
-        <button
-          onClick={handleFetchVolumes}
-          disabled={bulkVolumeMutation.isPending}
-          className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all ${
-            bulkVolumeMutation.isPending
-              ? 'bg-slate-700 text-slate-400 cursor-wait'
-              : volumesFetched
-              ? 'bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30'
-              : 'bg-[var(--primary)] text-white hover:bg-[var(--primary)]/90 shadow-lg shadow-[var(--primary)]/30'
-          }`}
-        >
-          {bulkVolumeMutation.isPending ? (
-            <>
-              <Loader2 size={18} className="animate-spin" />
-              검색량 조회 중...
-            </>
-          ) : volumesFetched ? (
-            <>
-              <BarChart3 size={18} />
-              검색량 다시 조회
-            </>
-          ) : (
-            <>
-              <BarChart3 size={18} />
-              검색량 조회하기
-            </>
+        {/* 버튼 그룹 */}
+        <div className="flex items-center gap-3">
+          {/* CSV 내보내기 버튼 */}
+          {onExport && (
+            <button
+              onClick={onExport}
+              disabled={isExporting}
+              className="flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all bg-slate-700 text-white hover:bg-slate-600 border border-slate-600 disabled:opacity-50"
+            >
+              <Download size={18} />
+              {isExporting ? '내보내는 중...' : 'CSV 내보내기'}
+            </button>
           )}
-        </button>
+
+          {/* 검색량 조회 버튼 */}
+          <button
+            onClick={handleFetchVolumes}
+            disabled={bulkVolumeMutation.isPending}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all ${
+              bulkVolumeMutation.isPending
+                ? 'bg-slate-700 text-slate-400 cursor-wait'
+                : volumesFetched
+                ? 'bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30'
+                : 'bg-[var(--primary)] text-white hover:bg-[var(--primary)]/90 shadow-lg shadow-[var(--primary)]/30'
+            }`}
+          >
+            {bulkVolumeMutation.isPending ? (
+              <>
+                <Loader2 size={18} className="animate-spin" />
+                검색량 조회 중...
+              </>
+            ) : volumesFetched ? (
+              <>
+                <BarChart3 size={18} />
+                검색량 다시 조회
+              </>
+            ) : (
+              <>
+                <BarChart3 size={18} />
+                검색량 조회하기
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* 4-Grid Layout */}
