@@ -312,7 +312,7 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
             ) : (
               <>
                 <Wand2 size={18} />
-                {modifiers.length > 0 ? `수식어 ${modifiers.length}개 (G:${prefixGoogle.length} N:${prefixNaver.length})` : '수식어 생성'}
+                {modifiers.length > 0 ? `수식어 ${prefixGoogle.length}개` : '수식어 생성'}
               </>
             )}
           </button>
