@@ -35,11 +35,15 @@ export async function POST(request: NextRequest) {
     const csvContent = BOM + [headers.join(','), ...rows].join('\n');
 
     // Response with CSV file
+    // 한글 파일명 지원을 위해 filename*에 UTF-8 인코딩 사용
+    const safeFilename = `keyword_export_${Date.now()}.csv`;
+    const encodedFilename = encodeURIComponent(`${filename}_${Date.now()}.csv`);
+
     return new NextResponse(csvContent, {
       status: 200,
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': `attachment; filename="${filename}_${Date.now()}.csv"`,
+        'Content-Disposition': `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`,
       },
     });
   } catch (error) {
