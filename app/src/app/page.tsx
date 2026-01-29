@@ -28,11 +28,19 @@ export default function Home() {
   }, []);
 
   const handleExport = useCallback(() => {
+    console.log('[CSV Export] Button clicked');
+    console.log('[CSV Export] analysisData:', analysisData);
+    console.log('[CSV Export] selectedKeyword:', selectedKeyword);
+
     if (analysisData && selectedKeyword) {
+      console.log('[CSV Export] Calling mutate with', analysisData.length, 'items');
       exportCsv.mutate({
         data: analysisData,
         filename: `키워드분석_${selectedKeyword}`,
       });
+    } else {
+      console.log('[CSV Export] Condition not met - analysisData or selectedKeyword is missing');
+      alert('내보낼 데이터가 없습니다.');
     }
   }, [analysisData, selectedKeyword, exportCsv]);
 
