@@ -1,8 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getGoogleAutocomplete, getGoogleSearchVolume } from '@/lib/api/dataforseo';
+import { getGoogleAutocomplete } from '@/lib/api/dataforseo';
 
-// 한글 자음 목록
-const KOREAN_CONSONANTS = ['ㄱ', 'ㄴ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅅ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+// 한글 자음 (14개)
+const CONSONANTS = ['ㄱ', 'ㄴ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅅ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+
+// 한글 모음 (14개) - 키보드로 입력 가능한 것만
+const VOWELS = ['ㅏ', 'ㅑ', 'ㅓ', 'ㅕ', 'ㅗ', 'ㅛ', 'ㅜ', 'ㅠ', 'ㅡ', 'ㅣ', 'ㅐ', 'ㅒ', 'ㅔ', 'ㅖ'];
+
+// 자음 + 모음 조합으로 음절 생성 (196개)
+function generateSyllables(): string[] {
+  const syllables: string[] = [];
+  const CHO = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+  const JUNG = ['ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅗ', 'ㅘ', 'ㅙ', 'ㅚ', 'ㅛ', 'ㅜ', 'ㅝ', 'ㅞ', 'ㅟ', 'ㅠ', 'ㅡ', 'ㅢ', 'ㅣ'];
+
+  for (const consonant of CONSONANTS) {
+    for (const vowel of VOWELS) {
+      // 초성 인덱스
+      const choIndex = CHO.indexOf(consonant);
+      // 중성 인덱스
+      const jungIndex = JUNG.indexOf(vowel);
+
+      if (choIndex !== -1 && jungIndex !== -1) {
+        // 한글 유니코드 공식: 0xAC00 + (초성 * 21 * 28) + (중성 * 28)
+        const syllableCode = 0xAC00 + (choIndex * 21 * 28) + (jungIndex * 28);
+        syllables.push(String.fromCharCode(syllableCode));
+      }
+    }
+  }
+
+  return syllables;
+}
+
+const KOREAN_SYLLABLES = generateSyllables();
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,17 +46,31 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('[GOOGLE EXPAND] Starting expanded autocomplete for:', keyword);
+    console.log('[GOOGLE EXPAND] Total syllables to check:', KOREAN_SYLLABLES.length);
 
-    // 모든 자음에 대해 자동완성 조회
+    // 모든 음절에 대해 자동완성 조회 (병렬 처리)
     const allResults: { keyword: string; volume: number; source: string }[] = [];
     const seenKeywords = new Set<string>();
 
-    for (const consonant of KOREAN_CONSONANTS) {
-      const expandedKeyword = `${keyword} ${consonant}`;
+    // 병렬 처리 (한 번에 10개씩)
+    const batchSize = 10;
+    for (let i = 0; i < KOREAN_SYLLABLES.length; i += batchSize) {
+      const batch = KOREAN_SYLLABLES.slice(i, i + batchSize);
 
-      try {
-        const results = await getGoogleAutocomplete(expandedKeyword);
+      const batchPromises = batch.map(async (syllable) => {
+        const expandedKeyword = `${keyword} ${syllable}`;
+        try {
+          const results = await getGoogleAutocomplete(expandedKeyword);
+          return { syllable, results };
+        } catch (error) {
+          console.error(`[GOOGLE EXPAND] Error for ${syllable}:`, error);
+          return { syllable, results: [] };
+        }
+      });
 
+      const batchResults = await Promise.all(batchPromises);
+
+      for (const { syllable, results } of batchResults) {
         for (const item of results) {
           const normalizedKeyword = item.keyword.toLowerCase();
           if (!seenKeywords.has(normalizedKeyword)) {
@@ -35,41 +78,16 @@ export async function POST(request: NextRequest) {
             allResults.push({
               keyword: item.keyword,
               volume: 0,
-              source: consonant,
+              source: syllable,
             });
           }
         }
-
-        console.log(`[GOOGLE EXPAND] ${consonant}: found ${results.length} suggestions`);
-      } catch (error) {
-        console.error(`[GOOGLE EXPAND] Error for ${consonant}:`, error);
       }
+
+      console.log(`[GOOGLE EXPAND] Batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(KOREAN_SYLLABLES.length / batchSize)} completed`);
     }
 
     console.log('[GOOGLE EXPAND] Total unique keywords:', allResults.length);
-
-    // 검색량 조회 (중복 제거된 키워드들)
-    if (allResults.length > 0) {
-      try {
-        const keywords = allResults.map(item => item.keyword);
-        const volumeData = await getGoogleSearchVolume(keywords);
-
-        // 검색량 맵 생성
-        const volumeMap = new Map<string, number>(
-          volumeData.map((v: { keyword: string; search_volume: number }) => [v.keyword.toLowerCase(), v.search_volume])
-        );
-
-        // 검색량 매핑
-        for (const item of allResults) {
-          item.volume = volumeMap.get(item.keyword.toLowerCase()) || 0;
-        }
-      } catch (volumeError) {
-        console.error('[GOOGLE EXPAND] Volume lookup failed:', volumeError);
-      }
-    }
-
-    // 검색량 기준 내림차순 정렬
-    allResults.sort((a, b) => b.volume - a.volume);
 
     return NextResponse.json({
       success: true,
