@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react';
 import DashboardView from '@/components/views/DashboardView';
 import ComparisonView from '@/components/views/ComparisonView';
 import { useExportCsv, KeywordItem } from '@/lib/hooks/useKeywordAnalysis';
-import { ArrowLeft, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 
 export default function Home() {
   const [selectedKeyword, setSelectedKeyword] = useState<string | null>(null);
@@ -46,29 +46,19 @@ export default function Home() {
 
   return (
     <div className="min-h-screen w-full bg-[var(--background)] text-white font-sans">
-      {/* Simple Header */}
-      <header className="sticky top-0 z-10 bg-[var(--background)]/80 backdrop-blur-xl border-b border-[var(--border)]">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {selectedKeyword ? (
-              <button
-                onClick={handleBackToDashboard}
-                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-              >
-                <ArrowLeft size={20} />
-              </button>
-            ) : (
+      {/* Simple Header - 대시보드에서만 표시 */}
+      {!selectedKeyword && (
+        <header className="sticky top-0 z-10 bg-[var(--background)]/80 backdrop-blur-xl border-b border-[var(--border)]">
+          <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
               <div className="p-2 bg-[var(--primary)]/20 rounded-xl">
                 <Sparkles size={20} className="text-[var(--primary)]" />
               </div>
-            )}
-            <h1 className="text-xl font-bold">
-              {selectedKeyword ? `"${selectedKeyword}" 분석 결과` : '키워드 마스터'}
-            </h1>
+              <h1 className="text-xl font-bold">키워드 마스터</h1>
+            </div>
           </div>
-
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* Main Content */}
       <main className={selectedKeyword ? "w-full px-2 py-2" : "max-w-7xl mx-auto px-6 py-8"}>
@@ -81,6 +71,7 @@ export default function Home() {
             onDataLoaded={handleDataLoaded}
             onExport={handleExport}
             isExporting={exportCsv.isPending}
+            onBack={handleBackToDashboard}
           />
         )}
       </main>

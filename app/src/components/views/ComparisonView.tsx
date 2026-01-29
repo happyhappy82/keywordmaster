@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Search, Keyboard, Globe, Zap, Loader2, AlertCircle, ChevronDown, ChevronUp, Sparkles, BarChart3, Download, Wand2 } from 'lucide-react';
+import { Search, Keyboard, Globe, Zap, Loader2, AlertCircle, ChevronDown, ChevronUp, Sparkles, BarChart3, Download, Wand2, ArrowLeft } from 'lucide-react';
 import { useKeywordAnalysis, useExpandedAutocomplete, useBulkVolumeQuery, useGenerateModifiers, KeywordItem, ExpandedItem } from '@/lib/hooks/useKeywordAnalysis';
 
 interface ComparisonViewProps {
@@ -10,6 +10,7 @@ interface ComparisonViewProps {
   onDataLoaded?: (data: KeywordItem[]) => void;
   onExport?: () => void;
   isExporting?: boolean;
+  onBack?: () => void;
 }
 
 interface ComparisonSection {
@@ -21,7 +22,7 @@ interface ComparisonSection {
   data: KeywordItem[];
 }
 
-export default function ComparisonView({ keyword, count, onDataLoaded, onExport, isExporting }: ComparisonViewProps) {
+export default function ComparisonView({ keyword, count, onDataLoaded, onExport, isExporting, onBack }: ComparisonViewProps) {
   const { data: analysisData, isLoading, error } = useKeywordAnalysis(keyword, count);
 
   // 확장 자동완성 상태
@@ -228,6 +229,14 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-4">
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="p-3 hover:bg-white/10 rounded-2xl transition-colors"
+            >
+              <ArrowLeft size={24} />
+            </button>
+          )}
           <div className="p-3 bg-[var(--primary)]/20 rounded-2xl text-[var(--primary)] animate-pulse">
             <Zap size={24} className="fill-current" />
           </div>
