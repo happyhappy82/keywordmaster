@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getGoogleAutocomplete } from '@/lib/api/dataforseo';
+import { getGoogleAutocomplete } from '@/lib/api/google';
 import { getNaverAutocomplete } from '@/lib/api/naver';
 
 export async function POST(request: NextRequest) {
