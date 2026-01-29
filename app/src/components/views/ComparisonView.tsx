@@ -34,6 +34,9 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
   const [deepExpandedNaver, setDeepExpandedNaver] = useState<ExpandedItem[]>([]);
   const [showDeepExpandedNaver, setShowDeepExpandedNaver] = useState(false);
   const [isDeepExpandingNaver, setIsDeepExpandingNaver] = useState(false);
+  const [deepExpandBatch, setDeepExpandBatch] = useState(0); // 현재 배치 번호
+  const [deepExpandHasMore, setDeepExpandHasMore] = useState(false); // 더 가져올 데이터가 있는지
+  const [deepExpandPhase1Keywords, setDeepExpandPhase1Keywords] = useState<string[]>([]); // Phase 1 키워드 저장
 
   // 검색량 상태
   const [volumeMap, setVolumeMap] = useState<Record<string, number>>({});
@@ -82,9 +85,10 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
     }
   };
 
-  // 네이버 심층 확장 (점진적 타이핑 + 재확장)
-  const handleDeepExpandNaver = async () => {
-    if (deepExpandedNaver.length > 0) {
+  // 네이버 심층 확장 (점진적 타이핑 + 재확장) - 배치 지원
+  const handleDeepExpandNaver = async (nextBatch = false) => {
+    // 토글 모드: 데이터가 있고 더 가져올 게 없으면 토글
+    if (!nextBatch && deepExpandedNaver.length > 0 && !deepExpandHasMore) {
       setShowDeepExpandedNaver(!showDeepExpandedNaver);
       return;
     }
@@ -98,17 +102,37 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
 
     const baseKeyword = parts[0];
     const targetSuffix = parts.slice(1).join(' ');
+    const batchToFetch = nextBatch ? deepExpandBatch + 1 : 0;
 
     setIsDeepExpandingNaver(true);
 
     try {
-      const result = await naverExpandMutation.mutateAsync({
-        keyword: baseKeyword,
-        platform: 'naver',
-        targetSuffix,
+      const response = await fetch('/api/naver/autocomplete-expand', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          keyword: baseKeyword,
+          targetSuffix,
+          batchIndex: batchToFetch,
+          phase1Keywords: batchToFetch > 0 ? deepExpandPhase1Keywords : undefined,
+        }),
       });
-      setDeepExpandedNaver(result);
+
+      if (!response.ok) throw new Error('API error');
+
+      const result = await response.json();
+
+      // 기존 데이터에 추가 (중복 제거)
+      const existingKeywords = new Set(deepExpandedNaver.map(d => d.keyword.toLowerCase()));
+      const newItems = (result.data || []).filter(
+        (item: ExpandedItem) => !existingKeywords.has(item.keyword.toLowerCase())
+      );
+
+      setDeepExpandedNaver(prev => [...prev, ...newItems]);
       setShowDeepExpandedNaver(true);
+      setDeepExpandBatch(batchToFetch);
+      setDeepExpandHasMore(result.batchInfo?.hasMore || false);
+      setDeepExpandPhase1Keywords(result.batchInfo?.phase1Keywords || []);
     } catch (err) {
       console.error('Naver deep expand error:', err);
       alert('심층 확장 중 오류가 발생했습니다.');
@@ -132,6 +156,9 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
     setShowExpandedNaver(false);
     setDeepExpandedNaver([]);
     setShowDeepExpandedNaver(false);
+    setDeepExpandBatch(0);
+    setDeepExpandHasMore(false);
+    setDeepExpandPhase1Keywords([]);
     setVolumeMap({});
     setVolumesFetched(false);
     setModifiers([]);
@@ -453,25 +480,42 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
                   )}
                   {/* 네이버 심층 확장 버튼 */}
                   {!isGoogle && (
-                    <button
-                      onClick={handleDeepExpandNaver}
-                      disabled={isDeepExpandingNaver}
-                      className={`text-[9px] font-black uppercase tracking-tighter px-2 py-1 rounded transition-all flex items-center gap-1 ${
-                        showDeepExpandedNaver
-                          ? 'bg-orange-500 text-white'
-                          : 'bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 border border-orange-500/20'
-                      }`}
-                    >
-                      {isDeepExpandingNaver ? (
-                        <Loader2 size={10} className="animate-spin" />
-                      ) : (
-                        <Zap size={10} />
+                    <>
+                      <button
+                        onClick={() => handleDeepExpandNaver(false)}
+                        disabled={isDeepExpandingNaver}
+                        className={`text-[9px] font-black uppercase tracking-tighter px-2 py-1 rounded transition-all flex items-center gap-1 ${
+                          showDeepExpandedNaver
+                            ? 'bg-orange-500 text-white'
+                            : 'bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 border border-orange-500/20'
+                        }`}
+                      >
+                        {isDeepExpandingNaver && deepExpandBatch === 0 ? (
+                          <Loader2 size={10} className="animate-spin" />
+                        ) : (
+                          <Zap size={10} />
+                        )}
+                        {deepExpandedNaver.length > 0
+                          ? `심층${deepExpandBatch + 1} (${deepExpandedNaver.length}개)`
+                          : '심층 확장'}
+                        {showDeepExpandedNaver ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+                      </button>
+                      {/* 다음 배치 버튼 - hasMore가 true일 때만 표시 */}
+                      {deepExpandHasMore && deepExpandedNaver.length > 0 && (
+                        <button
+                          onClick={() => handleDeepExpandNaver(true)}
+                          disabled={isDeepExpandingNaver}
+                          className="text-[9px] font-black uppercase tracking-tighter px-2 py-1 rounded transition-all flex items-center gap-1 bg-orange-600/20 text-orange-300 hover:bg-orange-600/40 border border-orange-500/30"
+                        >
+                          {isDeepExpandingNaver ? (
+                            <Loader2 size={10} className="animate-spin" />
+                          ) : (
+                            <Zap size={10} />
+                          )}
+                          심층{deepExpandBatch + 2}
+                        </button>
                       )}
-                      {deepExpandedNaver.length > 0
-                        ? `심층 ${deepExpandedNaver.length}개`
-                        : '심층 확장'}
-                      {showDeepExpandedNaver ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-                    </button>
+                    </>
                   )}
                   <span className="text-[10px] font-black bg-white/5 px-2 py-1 rounded-md text-slate-400 border border-white/5">
                     {section.data.length} Results
@@ -608,7 +652,8 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
                         <>
                           <tr className="bg-orange-500/10">
                             <td colSpan={2} className="px-5 py-2 text-[10px] font-black uppercase tracking-widest text-orange-400">
-                              심층 확장 (점진적 타이핑 + 재확장) - {deepExpandedNaver.length}개
+                              심층 확장 배치 {deepExpandBatch + 1} - {deepExpandedNaver.length}개
+                              {deepExpandHasMore && <span className="ml-2 text-orange-300">(계속 로드 가능)</span>}
                             </td>
                           </tr>
                           {deepExpandedNaver.map((item, kIdx) => (
