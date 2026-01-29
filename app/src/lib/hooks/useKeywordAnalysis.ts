@@ -87,6 +87,10 @@ export function useExportCsv() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     },
+    onError: (error) => {
+      console.error('CSV export error:', error);
+      alert('CSV 내보내기에 실패했습니다: ' + (error instanceof Error ? error.message : '알 수 없는 오류'));
+    },
   });
 }
 
