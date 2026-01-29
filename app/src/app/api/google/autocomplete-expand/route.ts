@@ -72,7 +72,8 @@ export async function POST(request: NextRequest) {
 
       for (const { syllable, results } of batchResults) {
         for (const item of results) {
-          const normalizedKeyword = item.keyword.toLowerCase();
+          // 띄어쓰기 제거하여 중복 체크 (노트북 추천 = 노트북추천)
+          const normalizedKeyword = item.keyword.toLowerCase().replace(/\s+/g, '');
           if (!seenKeywords.has(normalizedKeyword)) {
             seenKeywords.add(normalizedKeyword);
             allResults.push({
