@@ -4,24 +4,78 @@ import { getNaverAutocomplete } from '@/lib/api/naver';
 // 한글 자음 (14개)
 const CONSONANTS = ['ㄱ', 'ㄴ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅅ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
 
-// 한글 모음 (14개) - 키보드로 입력 가능한 것만
+// 한글 모음 (14개)
 const VOWELS = ['ㅏ', 'ㅑ', 'ㅓ', 'ㅕ', 'ㅗ', 'ㅛ', 'ㅜ', 'ㅠ', 'ㅡ', 'ㅣ', 'ㅐ', 'ㅒ', 'ㅔ', 'ㅖ'];
+
+// 초성, 중성 테이블
+const CHO = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+const JUNG = ['ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅗ', 'ㅘ', 'ㅙ', 'ㅚ', 'ㅛ', 'ㅜ', 'ㅝ', 'ㅞ', 'ㅟ', 'ㅠ', 'ㅡ', 'ㅢ', 'ㅣ'];
+
+// 한글 음절 생성 함수
+function buildSyllable(cho: number, jung: number, jong: number = 0): string {
+  return String.fromCharCode(0xAC00 + (cho * 21 * 28) + (jung * 28) + jong);
+}
+
+// 한글 음절 분해 함수
+function decomposeSyllable(char: string): { cho: number; jung: number; jong: number } | null {
+  const code = char.charCodeAt(0);
+  if (code < 0xAC00 || code > 0xD7A3) return null;
+
+  const offset = code - 0xAC00;
+  const jong = offset % 28;
+  const jung = ((offset - jong) / 28) % 21;
+  const cho = Math.floor(offset / (21 * 28));
+
+  return { cho, jung, jong };
+}
+
+// 점진적 타이핑 시퀀스 생성
+// "추천" → ["ㅊ", "추", "춫", "추처", "추천"]
+function generateTypingSequence(text: string): string[] {
+  const sequence: string[] = [];
+  let current = '';
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const decomposed = decomposeSyllable(char);
+
+    if (!decomposed) {
+      current += char;
+      sequence.push(current);
+      continue;
+    }
+
+    const { cho, jung, jong } = decomposed;
+
+    // 1. 초성만
+    sequence.push(current + CHO[cho]);
+
+    // 2. 초성 + 중성 (완성된 글자)
+    const syllableNoJong = buildSyllable(cho, jung, 0);
+    sequence.push(current + syllableNoJong);
+
+    // 3. 종성이 있는 경우
+    if (jong > 0) {
+      const syllableWithJong = buildSyllable(cho, jung, jong);
+      sequence.push(current + syllableWithJong);
+    }
+
+    current += char;
+  }
+
+  return sequence;
+}
 
 // 자음 + 모음 조합으로 음절 생성 (196개)
 function generateSyllables(): string[] {
   const syllables: string[] = [];
-  const CHO = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
-  const JUNG = ['ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅗ', 'ㅘ', 'ㅙ', 'ㅚ', 'ㅛ', 'ㅜ', 'ㅝ', 'ㅞ', 'ㅟ', 'ㅠ', 'ㅡ', 'ㅢ', 'ㅣ'];
 
   for (const consonant of CONSONANTS) {
     for (const vowel of VOWELS) {
-      // 초성 인덱스
       const choIndex = CHO.indexOf(consonant);
-      // 중성 인덱스
       const jungIndex = JUNG.indexOf(vowel);
 
       if (choIndex !== -1 && jungIndex !== -1) {
-        // 한글 유니코드 공식: 0xAC00 + (초성 * 21 * 28) + (중성 * 28)
         const syllableCode = 0xAC00 + (choIndex * 21 * 28) + (jungIndex * 28);
         syllables.push(String.fromCharCode(syllableCode));
       }
@@ -39,7 +93,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { keyword } = body;
+    const { keyword, targetSuffix } = body;
 
     if (!keyword || typeof keyword !== 'string') {
       return NextResponse.json(
@@ -48,42 +102,123 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[NAVER EXPAND] Starting expanded autocomplete for:', keyword);
-    console.log('[NAVER EXPAND] Total syllables to check:', KOREAN_SYLLABLES.length);
-
-    // 모든 음절에 대해 자동완성 조회 (순차 처리 - rate limit 회피)
-    const allResults: { keyword: string; volume: number; source: string }[] = [];
+    const allResults: { keyword: string; volume: number; source: string; phase: string }[] = [];
     const seenKeywords = new Set<string>();
 
-    for (let i = 0; i < KOREAN_SYLLABLES.length; i++) {
-      const syllable = KOREAN_SYLLABLES[i];
-      const expandedKeyword = `${keyword} ${syllable}`;
-
-      try {
-        const results = await getNaverAutocomplete(expandedKeyword);
-
-        for (const item of results) {
-          const normalizedKeyword = item.keyword.toLowerCase();
-          if (!seenKeywords.has(normalizedKeyword)) {
-            seenKeywords.add(normalizedKeyword);
-            allResults.push({
-              keyword: item.keyword,
-              volume: 0,
-              source: syllable,
-            });
-          }
+    // 결과 추가 헬퍼 함수 (추가된 키워드 반환)
+    const addResults = (results: { keyword: string; volume: number }[], source: string, phase: string): string[] => {
+      const added: string[] = [];
+      for (const item of results) {
+        const normalizedKeyword = item.keyword.toLowerCase();
+        if (!seenKeywords.has(normalizedKeyword)) {
+          seenKeywords.add(normalizedKeyword);
+          allResults.push({
+            keyword: item.keyword,
+            volume: 0,
+            source,
+            phase,
+          });
+          added.push(item.keyword);
         }
-      } catch (error) {
-        console.error(`[NAVER EXPAND] Error for ${syllable}:`, error);
+      }
+      return added;
+    };
+
+    // targetSuffix가 있으면 점진적 타이핑 모드
+    if (targetSuffix && typeof targetSuffix === 'string') {
+      console.log('[NAVER EXPAND] Progressive typing mode');
+      console.log('[NAVER EXPAND] Base keyword:', keyword);
+      console.log('[NAVER EXPAND] Target suffix:', targetSuffix);
+
+      // ========================================
+      // Phase 1: 점진적 타이핑으로 자동완성 수집
+      // ========================================
+      const typingSequence = generateTypingSequence(targetSuffix);
+      console.log('[NAVER EXPAND] Typing sequence:', typingSequence);
+
+      const phase1Keywords: string[] = []; // Phase 1에서 발견된 키워드들
+
+      for (let i = 0; i < typingSequence.length; i++) {
+        const partial = typingSequence[i];
+        const searchKeyword = `${keyword} ${partial}`;
+
+        try {
+          const results = await getNaverAutocomplete(searchKeyword);
+          const added = addResults(results, partial, 'phase1-typing');
+          phase1Keywords.push(...added);
+          console.log(`[NAVER EXPAND] Phase 1 (${i + 1}/${typingSequence.length}): "${searchKeyword}" → ${results.length} results, ${added.length} new`);
+        } catch (error) {
+          console.error(`[NAVER EXPAND] Error for "${searchKeyword}":`, error);
+        }
+
+        await delay(50);
       }
 
-      // 매 10개마다 로그 출력
-      if ((i + 1) % 10 === 0) {
-        console.log(`[NAVER EXPAND] Progress: ${i + 1}/${KOREAN_SYLLABLES.length}`);
+      console.log('[NAVER EXPAND] Phase 1 complete. Found', phase1Keywords.length, 'unique keywords');
+
+      // ========================================
+      // Phase 2: Phase 1에서 발견된 키워드들을 196개 음절로 재확장
+      // ========================================
+      console.log('[NAVER EXPAND] Phase 2: Re-expanding discovered keywords');
+
+      // 원본 키워드는 제외하고, 새로 발견된 키워드들만 확장
+      const baseKeywordLower = `${keyword} ${targetSuffix}`.toLowerCase();
+      const keywordsToExpand = phase1Keywords.filter(k =>
+        k.toLowerCase() !== baseKeywordLower &&
+        k.toLowerCase() !== keyword.toLowerCase()
+      );
+
+      console.log('[NAVER EXPAND] Keywords to expand:', keywordsToExpand.length);
+
+      for (let kIdx = 0; kIdx < keywordsToExpand.length; kIdx++) {
+        const expandKeyword = keywordsToExpand[kIdx];
+        console.log(`[NAVER EXPAND] Phase 2 (${kIdx + 1}/${keywordsToExpand.length}): Expanding "${expandKeyword}"`);
+
+        let expandCount = 0;
+
+        // 각 키워드에 대해 196개 음절 뒤에 붙이기
+        for (let i = 0; i < KOREAN_SYLLABLES.length; i++) {
+          const syllable = KOREAN_SYLLABLES[i];
+          const expandedKeyword = `${expandKeyword} ${syllable}`;
+
+          try {
+            const results = await getNaverAutocomplete(expandedKeyword);
+            const added = addResults(results, `${expandKeyword}+${syllable}`, 'phase2-reexpand');
+            expandCount += added.length;
+          } catch (error) {
+            // 에러 무시하고 계속
+          }
+
+          await delay(30); // 좀 더 빠르게
+        }
+
+        console.log(`[NAVER EXPAND] "${expandKeyword}" → ${expandCount} new keywords`);
       }
 
-      // rate limit 회피를 위한 딜레이 (50ms)
-      await delay(50);
+    } else {
+      // ========================================
+      // 단순 모드: 196개 음절 뒤에만 붙이기
+      // ========================================
+      console.log('[NAVER EXPAND] Simple expand mode for:', keyword);
+      console.log('[NAVER EXPAND] Total syllables:', KOREAN_SYLLABLES.length);
+
+      for (let i = 0; i < KOREAN_SYLLABLES.length; i++) {
+        const syllable = KOREAN_SYLLABLES[i];
+        const expandedKeyword = `${keyword} ${syllable}`;
+
+        try {
+          const results = await getNaverAutocomplete(expandedKeyword);
+          addResults(results, syllable, 'simple-suffix');
+        } catch (error) {
+          console.error(`[NAVER EXPAND] Error for ${syllable}:`, error);
+        }
+
+        if ((i + 1) % 20 === 0) {
+          console.log(`[NAVER EXPAND] Progress: ${i + 1}/${KOREAN_SYLLABLES.length}`);
+        }
+
+        await delay(50);
+      }
     }
 
     console.log('[NAVER EXPAND] Total unique keywords:', allResults.length);

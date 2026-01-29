@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getGoogleAutocomplete, getGoogleSearchVolume } from '@/lib/api/dataforseo';
+import { getGoogleAutocomplete } from '@/lib/api/google';
+import { getGoogleSearchVolume } from '@/lib/api/dataforseo';
 
 export async function POST(request: NextRequest) {
   try {

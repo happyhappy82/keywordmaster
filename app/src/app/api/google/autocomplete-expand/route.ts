@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getGoogleAutocomplete } from '@/lib/api/dataforseo';
+import { getGoogleAutocomplete } from '@/lib/api/google';
 
 // 한글 자음 (14개)
 const CONSONANTS = ['ㄱ', 'ㄴ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅅ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
@@ -32,6 +32,9 @@ function generateSyllables(): string[] {
 }
 
 const KOREAN_SYLLABLES = generateSyllables();
+
+// 딜레이 함수
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export async function POST(request: NextRequest) {
   try {
@@ -85,6 +88,9 @@ export async function POST(request: NextRequest) {
       }
 
       console.log(`[GOOGLE EXPAND] Batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(KOREAN_SYLLABLES.length / batchSize)} completed`);
+
+      // 배치 간 딜레이 (무료 API rate limit 방지)
+      await delay(100);
     }
 
     console.log('[GOOGLE EXPAND] Total unique keywords:', allResults.length);

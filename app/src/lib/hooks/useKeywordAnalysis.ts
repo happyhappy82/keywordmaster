@@ -99,12 +99,13 @@ interface ExpandedItem {
 
 async function fetchExpandedAutocomplete(
   keyword: string,
-  platform: 'google' | 'naver'
+  platform: 'google' | 'naver',
+  targetSuffix?: string
 ): Promise<ExpandedItem[]> {
   const response = await fetch(`/api/${platform}/autocomplete-expand`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ keyword }),
+    body: JSON.stringify({ keyword, targetSuffix }),
   });
 
   if (!response.ok) {
@@ -119,8 +120,8 @@ async function fetchExpandedAutocomplete(
 // 확장 자동완성 훅
 export function useExpandedAutocomplete() {
   return useMutation({
-    mutationFn: ({ keyword, platform }: { keyword: string; platform: 'google' | 'naver' }) =>
-      fetchExpandedAutocomplete(keyword, platform),
+    mutationFn: ({ keyword, platform, targetSuffix }: { keyword: string; platform: 'google' | 'naver'; targetSuffix?: string }) =>
+      fetchExpandedAutocomplete(keyword, platform, targetSuffix),
   });
 }
 
