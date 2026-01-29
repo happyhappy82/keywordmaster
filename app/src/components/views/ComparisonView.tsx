@@ -445,7 +445,7 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
                         >
                           <td className="px-5 py-3">
                             <div className="flex flex-col gap-1.5">
-                              <span className="font-bold text-slate-200 group-hover:text-white transition-colors truncate">
+                              <span className="font-bold text-slate-200 group-hover:text-white transition-colors break-words">
                                 {item.keyword}
                               </span>
                               <div className="flex items-center gap-2">
@@ -501,7 +501,7 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
                                     <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[var(--primary)]/20 text-[var(--primary)]">
                                       {item.source}
                                     </span>
-                                    <span className="font-bold text-slate-200 group-hover:text-white transition-colors truncate">
+                                    <span className="font-bold text-slate-200 group-hover:text-white transition-colors break-words">
                                       {item.keyword}
                                     </span>
                                   </div>
@@ -556,14 +556,9 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
                             >
                               <td className="px-5 py-3">
                                 <div className="flex flex-col gap-1.5">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">
-                                      {item.source}
-                                    </span>
-                                    <span className="font-bold text-slate-200 group-hover:text-white transition-colors truncate">
-                                      {item.keyword}
-                                    </span>
-                                  </div>
+                                  <span className="font-bold text-slate-200 group-hover:text-white transition-colors break-words">
+                                    {item.keyword}
+                                  </span>
                                   <div className="flex items-center gap-2">
                                     {isGoogle ? (
                                       <a
