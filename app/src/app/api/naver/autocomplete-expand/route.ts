@@ -157,16 +157,19 @@ export async function POST(request: NextRequest) {
       console.log('[NAVER EXPAND] Phase 1 complete. Found', phase1Keywords.length, 'unique keywords');
 
       // ========================================
-      // Phase 2: Phase 1에서 발견된 키워드들을 196개 음절로 재확장
+      // Phase 2: Phase 1에서 발견된 키워드 중 상위 5개만 자음(ㄱ~ㅎ)으로 재확장
+      // (시간 제한으로 인해 범위 축소)
       // ========================================
-      console.log('[NAVER EXPAND] Phase 2: Re-expanding discovered keywords');
+      console.log('[NAVER EXPAND] Phase 2: Re-expanding top keywords with consonants only');
 
-      // 원본 키워드는 제외하고, 새로 발견된 키워드들만 확장
+      // 원본 키워드는 제외하고, 새로 발견된 키워드들만 확장 (상위 5개로 제한)
       const baseKeywordLower = `${keyword} ${targetSuffix}`.toLowerCase();
-      const keywordsToExpand = phase1Keywords.filter(k =>
-        k.toLowerCase() !== baseKeywordLower &&
-        k.toLowerCase() !== keyword.toLowerCase()
-      );
+      const keywordsToExpand = phase1Keywords
+        .filter(k =>
+          k.toLowerCase() !== baseKeywordLower &&
+          k.toLowerCase() !== keyword.toLowerCase()
+        )
+        .slice(0, 5); // 상위 5개만
 
       console.log('[NAVER EXPAND] Keywords to expand:', keywordsToExpand.length);
 
@@ -176,20 +179,20 @@ export async function POST(request: NextRequest) {
 
         let expandCount = 0;
 
-        // 각 키워드에 대해 196개 음절 뒤에 붙이기
-        for (let i = 0; i < KOREAN_SYLLABLES.length; i++) {
-          const syllable = KOREAN_SYLLABLES[i];
-          const expandedKeyword = `${expandKeyword} ${syllable}`;
+        // 각 키워드에 대해 14개 자음만 뒤에 붙이기 (196개 대신)
+        for (let i = 0; i < CONSONANTS.length; i++) {
+          const consonant = CONSONANTS[i];
+          const expandedKeyword = `${expandKeyword} ${consonant}`;
 
           try {
             const results = await getNaverAutocomplete(expandedKeyword);
-            const added = addResults(results, `${expandKeyword}+${syllable}`, 'phase2-reexpand');
+            const added = addResults(results, `${expandKeyword}+${consonant}`, 'phase2-reexpand');
             expandCount += added.length;
           } catch (error) {
             // 에러 무시하고 계속
           }
 
-          await delay(30); // 좀 더 빠르게
+          await delay(30);
         }
 
         console.log(`[NAVER EXPAND] "${expandKeyword}" → ${expandCount} new keywords`);
