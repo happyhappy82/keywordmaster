@@ -63,8 +63,7 @@ export async function POST(request: NextRequest) {
         const results = await getNaverAutocomplete(expandedKeyword);
 
         for (const item of results) {
-          // 띄어쓰기 제거하여 중복 체크 (노트북 추천 = 노트북추천)
-          const normalizedKeyword = item.keyword.toLowerCase().replace(/\s+/g, '');
+          const normalizedKeyword = item.keyword.toLowerCase();
           if (!seenKeywords.has(normalizedKeyword)) {
             seenKeywords.add(normalizedKeyword);
             allResults.push({

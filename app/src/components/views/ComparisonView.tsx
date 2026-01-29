@@ -185,21 +185,13 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
         await delay(100);
       }
 
-      // 중복 제거 (띄어쓰기 무시: 노트북 추천 = 노트북추천)
-      const seenGoogle = new Set<string>();
-      const uniqueGoogle = googleResults.filter((item) => {
-        const normalized = item.keyword.toLowerCase().replace(/\s+/g, '');
-        if (seenGoogle.has(normalized)) return false;
-        seenGoogle.add(normalized);
-        return true;
-      });
-      const seenNaver = new Set<string>();
-      const uniqueNaver = naverResults.filter((item) => {
-        const normalized = item.keyword.toLowerCase().replace(/\s+/g, '');
-        if (seenNaver.has(normalized)) return false;
-        seenNaver.add(normalized);
-        return true;
-      });
+      // 중복 제거
+      const uniqueGoogle = googleResults.filter((item, idx, arr) =>
+        arr.findIndex(i => i.keyword.toLowerCase() === item.keyword.toLowerCase()) === idx
+      );
+      const uniqueNaver = naverResults.filter((item, idx, arr) =>
+        arr.findIndex(i => i.keyword.toLowerCase() === item.keyword.toLowerCase()) === idx
+      );
 
       setPrefixGoogle(uniqueGoogle);
       setPrefixNaver(uniqueNaver);

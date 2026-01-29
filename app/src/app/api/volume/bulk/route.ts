@@ -51,12 +51,11 @@ export async function POST(request: NextRequest) {
       console.error('[BULK VOLUME] Google volume error:', googleVolumes.reason);
     }
 
-    // Naver 검색량 매핑 (공백 제거하여 일관된 키 사용)
+    // Naver 검색량 매핑 (이미 공백 제거된 상태)
     if (naverVolumes.status === 'fulfilled') {
       const naverMap = naverVolumes.value as Map<string, number>;
       for (const [keyword, volume] of naverMap.entries()) {
-        const cleanKeyword = keyword.toLowerCase().replace(/\s+/g, '');
-        const key = `naver:${cleanKeyword}`;
+        const key = `naver:${keyword.toLowerCase()}`;
         volumeMap[key] = volume;
       }
       console.log('[BULK VOLUME] Naver volumes mapped:', Object.keys(volumeMap).filter(k => k.startsWith('naver:')).length);
