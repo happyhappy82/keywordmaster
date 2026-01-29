@@ -163,4 +163,83 @@ export function useBulkVolumeQuery() {
   });
 }
 
-export type { KeywordItem, AnalysisResult, ExpandedItem, VolumeResult };
+// Gemini 수식어 생성 API 호출
+async function fetchModifiers(keyword: string): Promise<string[]> {
+  const response = await fetch('/api/gemini/modifiers', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keyword }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to generate modifiers');
+  }
+
+  const result = await response.json();
+  return result.modifiers || [];
+}
+
+// 수식어 생성 훅
+export function useGenerateModifiers() {
+  return useMutation({
+    mutationFn: (keyword: string) => fetchModifiers(keyword),
+  });
+}
+
+// 수식어 + 키워드로 자동완성 조회
+interface PrefixAutocompleteResult {
+  modifier: string;
+  suggestions: string[];
+}
+
+async function fetchPrefixAutocomplete(
+  keyword: string,
+  modifiers: string[],
+  platform: 'google' | 'naver'
+): Promise<PrefixAutocompleteResult[]> {
+  const results: PrefixAutocompleteResult[] = [];
+
+  // 각 수식어에 대해 자동완성 조회 (병렬 처리)
+  const promises = modifiers.map(async (modifier) => {
+    const query = `${modifier} ${keyword}`;
+    try {
+      const response = await fetch(`/api/${platform}/autocomplete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: query }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return {
+          modifier,
+          suggestions: data.data?.map((item: { keyword: string }) => item.keyword) || [],
+        };
+      }
+    } catch (err) {
+      console.error(`Autocomplete error for "${modifier}":`, err);
+    }
+    return { modifier, suggestions: [] };
+  });
+
+  const resolved = await Promise.all(promises);
+  return resolved.filter(r => r.suggestions.length > 0);
+}
+
+// 수식어 자동완성 훅
+export function usePrefixAutocomplete() {
+  return useMutation({
+    mutationFn: ({
+      keyword,
+      modifiers,
+      platform,
+    }: {
+      keyword: string;
+      modifiers: string[];
+      platform: 'google' | 'naver';
+    }) => fetchPrefixAutocomplete(keyword, modifiers, platform),
+  });
+}
+
+export type { KeywordItem, AnalysisResult, ExpandedItem, VolumeResult, PrefixAutocompleteResult };

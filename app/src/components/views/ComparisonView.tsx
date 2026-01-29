@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Search, Keyboard, Globe, Zap, Loader2, AlertCircle, ChevronDown, ChevronUp, Sparkles, BarChart3, Download } from 'lucide-react';
-import { useKeywordAnalysis, useExpandedAutocomplete, useBulkVolumeQuery, KeywordItem, ExpandedItem } from '@/lib/hooks/useKeywordAnalysis';
+import { Search, Keyboard, Globe, Zap, Loader2, AlertCircle, ChevronDown, ChevronUp, Sparkles, BarChart3, Download, Wand2 } from 'lucide-react';
+import { useKeywordAnalysis, useExpandedAutocomplete, useBulkVolumeQuery, useGenerateModifiers, KeywordItem, ExpandedItem } from '@/lib/hooks/useKeywordAnalysis';
 
 interface ComparisonViewProps {
   keyword: string;
@@ -34,9 +34,14 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
   const [volumeMap, setVolumeMap] = useState<Record<string, number>>({});
   const [volumesFetched, setVolumesFetched] = useState(false);
 
+  // 수식어 상태
+  const [modifiers, setModifiers] = useState<string[]>([]);
+  const [showModifiers, setShowModifiers] = useState(false);
+
   const googleExpandMutation = useExpandedAutocomplete();
   const naverExpandMutation = useExpandedAutocomplete();
   const bulkVolumeMutation = useBulkVolumeQuery();
+  const modifiersMutation = useGenerateModifiers();
 
   // 확장 자동완성 호출
   const handleExpandGoogle = async () => {
@@ -82,7 +87,25 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
     setShowExpandedNaver(false);
     setVolumeMap({});
     setVolumesFetched(false);
+    setModifiers([]);
+    setShowModifiers(false);
   }, [keyword]);
+
+  // 수식어 생성
+  const handleGenerateModifiers = async () => {
+    if (modifiers.length > 0) {
+      setShowModifiers(!showModifiers);
+      return;
+    }
+    try {
+      const result = await modifiersMutation.mutateAsync(keyword);
+      setModifiers(result);
+      setShowModifiers(true);
+    } catch (err) {
+      console.error('Modifier generation error:', err);
+      alert('수식어 생성에 실패했습니다. Gemini API 키를 확인해주세요.');
+    }
+  };
 
   // 검색량 일괄 조회
   const handleFetchVolumes = async () => {
@@ -221,6 +244,31 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
 
         {/* 버튼 그룹 */}
         <div className="flex items-center gap-3">
+          {/* 수식어 생성 버튼 */}
+          <button
+            onClick={handleGenerateModifiers}
+            disabled={modifiersMutation.isPending}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all ${
+              modifiersMutation.isPending
+                ? 'bg-slate-700 text-slate-400 cursor-wait'
+                : modifiers.length > 0
+                ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30 hover:bg-purple-500/30'
+                : 'bg-purple-600 text-white hover:bg-purple-500 shadow-lg shadow-purple-600/30'
+            }`}
+          >
+            {modifiersMutation.isPending ? (
+              <>
+                <Loader2 size={18} className="animate-spin" />
+                AI 생성 중...
+              </>
+            ) : (
+              <>
+                <Wand2 size={18} />
+                {modifiers.length > 0 ? `수식어 ${modifiers.length}개` : '수식어 생성'}
+              </>
+            )}
+          </button>
+
           {/* CSV 내보내기 버튼 */}
           {onExport && (
             <button
@@ -264,6 +312,40 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
           </button>
         </div>
       </div>
+
+      {/* 수식어 섹션 */}
+      {showModifiers && modifiers.length > 0 && (
+        <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Wand2 size={18} className="text-purple-400" />
+              <h3 className="font-bold text-purple-400">AI 생성 수식어</h3>
+              <span className="text-xs text-purple-400/60">
+                "{modifiers[0]} {keyword}", "{modifiers[1]} {keyword}" 형태로 검색됩니다
+              </span>
+            </div>
+            <button
+              onClick={() => setShowModifiers(false)}
+              className="text-xs text-slate-500 hover:text-white transition-colors"
+            >
+              접기
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {modifiers.map((modifier, idx) => (
+              <a
+                key={idx}
+                href={`https://www.google.com/search?q=${encodeURIComponent(modifier + ' ' + keyword)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/40 border border-purple-500/30 rounded-lg text-sm text-purple-300 hover:text-white transition-all cursor-pointer"
+              >
+                {modifier} {keyword}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 4-Grid Layout */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
