@@ -119,16 +119,88 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
       setModifiers(generatedModifiers);
       setShowModifiers(true);
 
-      // 2. 수식어 + 키워드 조합 생성 (자동완성 API 호출 없이 직접 조합)
-      // Google과 Naver 모두 동일한 조합 사용
-      const prefixKeywords: ExpandedItem[] = generatedModifiers.map(modifier => ({
-        keyword: `${modifier} ${keyword}`,
-        volume: 0,
-        source: modifier,
-      }));
+      // 2. 수식어 + 키워드 조합 생성
+      const prefixCombinations = generatedModifiers.map(modifier => `${modifier} ${keyword}`);
 
-      setPrefixGoogle(prefixKeywords);
-      setPrefixNaver([...prefixKeywords]); // 복사본
+      // 3. 각 조합으로 자동완성 조회
+      const googleResults: ExpandedItem[] = [];
+      const naverResults: ExpandedItem[] = [];
+
+      // 딜레이 함수
+      const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+      // 기본 조합 먼저 추가
+      prefixCombinations.forEach(combo => {
+        const modifier = combo.split(' ')[0];
+        googleResults.push({ keyword: combo, volume: 0, source: modifier });
+        naverResults.push({ keyword: combo, volume: 0, source: modifier });
+      });
+
+      // Google 자동완성 (병렬)
+      const googlePromises = prefixCombinations.map(async (query) => {
+        const modifier = query.split(' ')[0];
+        try {
+          const res = await fetch('/api/google/autocomplete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ keyword: query }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.data) {
+              return data.data.map((item: { keyword: string }) => ({
+                keyword: item.keyword,
+                volume: 0,
+                source: modifier,
+              }));
+            }
+          }
+        } catch (err) {
+          console.error(`Google autocomplete error for "${query}":`, err);
+        }
+        return [];
+      });
+
+      const googleAllResults = await Promise.all(googlePromises);
+      googleAllResults.forEach(items => googleResults.push(...items));
+
+      // Naver 자동완성 (순차 처리 - rate limit 회피)
+      for (const query of prefixCombinations) {
+        const modifier = query.split(' ')[0];
+        try {
+          const res = await fetch('/api/naver/autocomplete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ keyword: query }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.data && data.data.length > 0) {
+              data.data.forEach((item: { keyword: string }) => {
+                naverResults.push({
+                  keyword: item.keyword,
+                  volume: 0,
+                  source: modifier,
+                });
+              });
+            }
+          }
+        } catch (err) {
+          console.error(`Naver autocomplete error for "${query}":`, err);
+        }
+        await delay(100);
+      }
+
+      // 중복 제거
+      const uniqueGoogle = googleResults.filter((item, idx, arr) =>
+        arr.findIndex(i => i.keyword === item.keyword) === idx
+      );
+      const uniqueNaver = naverResults.filter((item, idx, arr) =>
+        arr.findIndex(i => i.keyword === item.keyword) === idx
+      );
+
+      setPrefixGoogle(uniqueGoogle);
+      setPrefixNaver(uniqueNaver);
       setShowPrefixGoogle(true);
       setShowPrefixNaver(true);
       setIsFetchingPrefix(false);
