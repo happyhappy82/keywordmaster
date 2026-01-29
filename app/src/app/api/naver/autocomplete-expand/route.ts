@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { keyword, targetSuffix, batchIndex = 0, phase1Keywords: existingPhase1Keywords } = body;
-    const BATCH_SIZE = 5; // 한 번에 처리할 키워드 수
+    const BATCH_SIZE = 3; // 한 번에 처리할 키워드 수 (타임아웃 방지)
 
     if (!keyword || typeof keyword !== 'string') {
       return NextResponse.json(
@@ -185,14 +185,14 @@ export async function POST(request: NextRequest) {
 
         let expandCount = 0;
 
-        // 각 키워드에 대해 196개 음절 뒤에 붙이기
-        for (let i = 0; i < KOREAN_SYLLABLES.length; i++) {
-          const syllable = KOREAN_SYLLABLES[i];
-          const expandedKeyword = `${expandKeyword} ${syllable}`;
+        // 각 키워드에 대해 14개 자음(ㄱ~ㅎ)만 붙이기 (타임아웃 방지)
+        for (let i = 0; i < CONSONANTS.length; i++) {
+          const consonant = CONSONANTS[i];
+          const expandedKeyword = `${expandKeyword} ${consonant}`;
 
           try {
             const results = await getNaverAutocomplete(expandedKeyword);
-            const added = addResults(results, `${expandKeyword}+${syllable}`, 'phase2-reexpand');
+            const added = addResults(results, `${expandKeyword}+${consonant}`, 'phase2-reexpand');
             expandCount += added.length;
           } catch (error) {
             // 에러 무시하고 계속
