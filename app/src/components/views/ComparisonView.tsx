@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Keyboard, Globe, Zap, Loader2, AlertCircle, ChevronDown, ChevronUp, Sparkles, BarChart3, Download, Wand2, ArrowLeft, Search } from 'lucide-react';
+import { Keyboard, Globe, Zap, Loader2, AlertCircle, ChevronDown, ChevronUp, Sparkles, BarChart3, Download, Wand2, ArrowLeft, Search, Copy, Check } from 'lucide-react';
 import { useKeywordAnalysis, useExpandedAutocomplete, useBulkVolumeQuery, useGenerateModifiers, KeywordItem, ExpandedItem } from '@/lib/hooks/useKeywordAnalysis';
 
 interface ComparisonViewProps {
@@ -43,6 +43,9 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
   // 검색량 상태
   const [volumeMap, setVolumeMap] = useState<Record<string, number>>({});
   const [volumesFetched, setVolumesFetched] = useState(false);
+
+  // 복사 상태
+  const [copiedSection, setCopiedSection] = useState<string | null>(null);
 
   // 수식어 상태
   const [modifiers, setModifiers] = useState<string[]>([]);
@@ -306,6 +309,50 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
     return volumeMap[key] || 0;
   };
 
+  // 키워드 복사 (줄바꿈으로 구분)
+  const handleCopyKeywords = (source: 'google' | 'naver') => {
+    const keywords = new Set<string>();
+    const isGoogle = source === 'google';
+
+    // 기본 자동완성
+    const sectionData = isGoogle ? analysisData?.data.googleAutocomplete : analysisData?.data.naverAutocomplete;
+    if (sectionData) {
+      for (const item of sectionData) keywords.add(item.keyword);
+    }
+
+    // 확장 ㄱ~ㅎ
+    const expanded = isGoogle ? expandedGoogle : expandedNaver;
+    const showExp = isGoogle ? showExpandedGoogle : showExpandedNaver;
+    if (showExp) {
+      for (const item of expanded) keywords.add(item.keyword);
+    }
+
+    // 수식어 (구글만)
+    if (isGoogle && showPrefixGoogle) {
+      for (const item of prefixGoogle) keywords.add(item.keyword);
+      for (const item of prefixGoogle) {
+        if (expandedKeywords.has(item.keyword)) {
+          for (const sub of (perKeywordResults[item.keyword] || [])) keywords.add(sub.keyword);
+        }
+      }
+    }
+
+    // 심층 확장 (네이버만)
+    if (!isGoogle && showDeepExpandedNaver) {
+      for (const item of deepExpandedNaver) keywords.add(item.keyword);
+      for (const item of deepExpandedNaver) {
+        if (expandedKeywords.has(item.keyword)) {
+          for (const sub of (perKeywordResults[item.keyword] || [])) keywords.add(sub.keyword);
+        }
+      }
+    }
+
+    const text = Array.from(keywords).join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedSection(source);
+      setTimeout(() => setCopiedSection(null), 2000);
+    });
+  };
 
   // 로딩 상태
   if (isLoading) {
@@ -609,6 +656,21 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
                       {showDeepExpandedNaver ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
                     </button>
                   )}
+                  <button
+                    onClick={() => handleCopyKeywords(section.source)}
+                    className={`text-[9px] font-black uppercase tracking-tighter px-2 py-1 rounded transition-all flex items-center gap-1 ${
+                      copiedSection === section.source
+                        ? 'bg-green-500 text-white'
+                        : 'bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white border border-white/10'
+                    }`}
+                  >
+                    {copiedSection === section.source ? (
+                      <Check size={10} />
+                    ) : (
+                      <Copy size={10} />
+                    )}
+                    {copiedSection === section.source ? '복사됨!' : '키워드 복사'}
+                  </button>
                   <span className="text-[10px] font-black bg-white/5 px-2 py-1 rounded-md text-slate-400 border border-white/5">
                     {section.data.length} Results
                   </span>
