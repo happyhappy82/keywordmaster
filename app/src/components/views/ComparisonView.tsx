@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Keyboard, Globe, Zap, Loader2, AlertCircle, ChevronDown, ChevronUp, Sparkles, BarChart3, Download, Wand2, ArrowLeft, Search, Copy, Check } from 'lucide-react';
-import { useKeywordAnalysis, useExpandedAutocomplete, useBulkVolumeQuery, useGenerateModifiers, KeywordItem, ExpandedItem } from '@/lib/hooks/useKeywordAnalysis';
+import { useKeywordAnalysis, useExpandedAutocomplete, useGenerateModifiers, KeywordItem, ExpandedItem } from '@/lib/hooks/useKeywordAnalysis';
 
 interface ComparisonViewProps {
   keyword: string;
@@ -41,6 +41,8 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
   // 검색량 상태
   const [volumeMap, setVolumeMap] = useState<Record<string, number>>({});
   const [volumesFetched, setVolumesFetched] = useState(false);
+  const [isFetchingVolumes, setIsFetchingVolumes] = useState(false);
+  const [volumeFetchProgress, setVolumeFetchProgress] = useState<{ done: number; total: number; platform: string } | null>(null);
 
   // 복사 상태
   const [copiedSection, setCopiedSection] = useState<string | null>(null);
@@ -61,7 +63,7 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
 
   const googleExpandMutation = useExpandedAutocomplete();
   const naverExpandMutation = useExpandedAutocomplete();
-  const bulkVolumeMutation = useBulkVolumeQuery();
+  // bulkVolumeMutation 제거 - handleFetchVolumes에서 직접 배치 호출
   const modifiersMutation = useGenerateModifiers();
 
   // 확장 자동완성 호출
@@ -318,13 +320,32 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
       }
     }
 
-    try {
-      const result = await bulkVolumeMutation.mutateAsync(allKeywords);
-      setVolumeMap(prev => ({ ...prev, ...result.volumeMap }));
-      setVolumesFetched(true);
-    } catch (err) {
-      console.error('Volume fetch error:', err);
+    // 배치로 나눠서 순차 호출 (타임아웃 방지, 결과 즉시 반영)
+    const BATCH_SIZE = 50;
+    setIsFetchingVolumes(true);
+    setVolumeFetchProgress({ done: 0, total: allKeywords.length, platform });
+
+    for (let i = 0; i < allKeywords.length; i += BATCH_SIZE) {
+      const batch = allKeywords.slice(i, i + BATCH_SIZE);
+      try {
+        const res = await fetch('/api/volume/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keywords: batch }),
+        });
+        if (res.ok) {
+          const result = await res.json();
+          setVolumeMap(prev => ({ ...prev, ...result.volumeMap }));
+        }
+      } catch (err) {
+        console.error(`Volume batch error (${i}~${i + BATCH_SIZE}):`, err);
+      }
+      setVolumeFetchProgress({ done: Math.min(i + BATCH_SIZE, allKeywords.length), total: allKeywords.length, platform });
     }
+
+    setVolumesFetched(true);
+    setIsFetchingVolumes(false);
+    setVolumeFetchProgress(null);
   };
 
   // 검색량 가져오기 헬퍼 함수
@@ -579,14 +600,14 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
           {/* 검색량 조회 버튼 - 구글 */}
           <button
             onClick={() => handleFetchVolumes('google')}
-            disabled={bulkVolumeMutation.isPending}
+            disabled={isFetchingVolumes}
             className={`flex items-center gap-2 px-4 py-3 rounded-xl font-bold text-xs transition-all ${
-              bulkVolumeMutation.isPending
+              isFetchingVolumes
                 ? 'bg-slate-700 text-slate-400 cursor-wait'
                 : 'bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30'
             }`}
           >
-            {bulkVolumeMutation.isPending ? (
+            {isFetchingVolumes && volumeFetchProgress?.platform === 'google' ? (
               <Loader2 size={16} className="animate-spin" />
             ) : (
               <BarChart3 size={16} />
@@ -596,14 +617,14 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
           {/* 검색량 조회 버튼 - 네이버 */}
           <button
             onClick={() => handleFetchVolumes('naver')}
-            disabled={bulkVolumeMutation.isPending}
+            disabled={isFetchingVolumes}
             className={`flex items-center gap-2 px-4 py-3 rounded-xl font-bold text-xs transition-all ${
-              bulkVolumeMutation.isPending
+              isFetchingVolumes
                 ? 'bg-slate-700 text-slate-400 cursor-wait'
                 : 'bg-[var(--naver)]/20 text-[var(--naver)] border border-[var(--naver)]/30 hover:bg-[var(--naver)]/30'
             }`}
           >
-            {bulkVolumeMutation.isPending ? (
+            {isFetchingVolumes && volumeFetchProgress?.platform === 'naver' ? (
               <Loader2 size={16} className="animate-spin" />
             ) : (
               <BarChart3 size={16} />
@@ -612,6 +633,27 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
           </button>
         </div>
       </div>
+
+      {/* 검색량 조회 진행 상태 팝업 */}
+      {volumeFetchProgress && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-800 border border-slate-600 rounded-2xl shadow-2xl px-6 py-4 flex items-center gap-4">
+          <Loader2 size={20} className="animate-spin text-[var(--primary)]" />
+          <div>
+            <p className="text-sm font-bold text-white">
+              {volumeFetchProgress.platform === 'google' ? '구글' : '네이버'} 검색량 조회 중
+            </p>
+            <p className="text-xs text-slate-400">
+              {volumeFetchProgress.total}개 중 {volumeFetchProgress.done}개 완료
+            </p>
+            <div className="mt-1.5 w-48 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-[var(--primary)] rounded-full transition-all duration-300"
+                style={{ width: `${(volumeFetchProgress.done / volumeFetchProgress.total) * 100}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 2-Grid Layout */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
