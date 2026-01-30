@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Keyboard, Globe, Zap, Loader2, AlertCircle, ChevronDown, ChevronUp, Sparkles, BarChart3, Download, Wand2, ArrowLeft, Search, Copy, Check } from 'lucide-react';
-import { useKeywordAnalysis, useExpandedAutocomplete, useGenerateModifiers, KeywordItem, ExpandedItem } from '@/lib/hooks/useKeywordAnalysis';
+import { useKeywordAnalysis, useGenerateModifiers, KeywordItem, ExpandedItem } from '@/lib/hooks/useKeywordAnalysis';
 
 interface ComparisonViewProps {
   keyword: string;
@@ -61,10 +61,56 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
   const [showPrefixNaver, setShowPrefixNaver] = useState(false);
   const [isFetchingPrefixNaver, setIsFetchingPrefixNaver] = useState(false);
 
-  const googleExpandMutation = useExpandedAutocomplete();
-  const naverExpandMutation = useExpandedAutocomplete();
   // bulkVolumeMutation 제거 - handleFetchVolumes에서 직접 배치 호출
   const modifiersMutation = useGenerateModifiers();
+
+  // 확장 자동완성 배치 호출 상수
+  const TOTAL_SYLLABLES = 196;
+  const NAVER_SYLLABLE_BATCH = 10;  // 네이버: 10음절/배치 (~5초)
+  const GOOGLE_SYLLABLE_BATCH = 50; // 구글: 50음절/배치 (~2초, 내부 병렬처리)
+
+  // 확장 진행 상태
+  const [isExpandingGoogle, setIsExpandingGoogle] = useState(false);
+  const [isExpandingNaver, setIsExpandingNaver] = useState(false);
+  const [expandProgress, setExpandProgress] = useState<{ done: number; total: number; platform: string } | null>(null);
+
+  // 배치 확장 호출 헬퍼
+  const fetchExpandBatched = async (
+    apiUrl: string,
+    bodyBase: Record<string, unknown>,
+    batchSize: number,
+    onBatchDone?: (results: ExpandedItem[], done: number, total: number) => void
+  ): Promise<ExpandedItem[]> => {
+    const allResults: ExpandedItem[] = [];
+    const seenKeywords = new Set<string>();
+
+    for (let start = 0; start < TOTAL_SYLLABLES; start += batchSize) {
+      const syllableCount = Math.min(batchSize, TOTAL_SYLLABLES - start);
+      try {
+        const res = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...bodyBase, syllableStart: start, syllableCount }),
+        });
+        if (res.ok) {
+          const result = await res.json();
+          for (const item of (result.data || [])) {
+            const key = item.keyword.toLowerCase();
+            if (!seenKeywords.has(key)) {
+              seenKeywords.add(key);
+              allResults.push(item);
+            }
+          }
+        }
+      } catch (err) {
+        console.error(`Expand batch error (${start}~${start + syllableCount}):`, err);
+      }
+      if (onBatchDone) {
+        onBatchDone([...allResults], Math.min(start + syllableCount, TOTAL_SYLLABLES), TOTAL_SYLLABLES);
+      }
+    }
+    return allResults;
+  };
 
   // 확장 자동완성 호출
   const handleExpandGoogle = async () => {
@@ -72,12 +118,25 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
       setShowExpandedGoogle(!showExpandedGoogle);
       return;
     }
+    setIsExpandingGoogle(true);
+    setExpandProgress({ done: 0, total: TOTAL_SYLLABLES, platform: 'google' });
     try {
-      const result = await googleExpandMutation.mutateAsync({ keyword, platform: 'google' });
+      const result = await fetchExpandBatched(
+        '/api/google/autocomplete-expand',
+        { keyword },
+        GOOGLE_SYLLABLE_BATCH,
+        (results, done, total) => {
+          setExpandedGoogle(results);
+          setExpandProgress({ done, total, platform: 'google' });
+        }
+      );
       setExpandedGoogle(result);
       setShowExpandedGoogle(true);
     } catch (err) {
       console.error('Google expand error:', err);
+    } finally {
+      setIsExpandingGoogle(false);
+      setExpandProgress(null);
     }
   };
 
@@ -86,12 +145,25 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
       setShowExpandedNaver(!showExpandedNaver);
       return;
     }
+    setIsExpandingNaver(true);
+    setExpandProgress({ done: 0, total: TOTAL_SYLLABLES, platform: 'naver' });
     try {
-      const result = await naverExpandMutation.mutateAsync({ keyword, platform: 'naver' });
+      const result = await fetchExpandBatched(
+        '/api/naver/autocomplete-expand',
+        { keyword },
+        NAVER_SYLLABLE_BATCH,
+        (results, done, total) => {
+          setExpandedNaver(results);
+          setExpandProgress({ done, total, platform: 'naver' });
+        }
+      );
       setExpandedNaver(result);
       setShowExpandedNaver(true);
     } catch (err) {
       console.error('Naver expand error:', err);
+    } finally {
+      setIsExpandingNaver(false);
+      setExpandProgress(null);
     }
   };
 
@@ -134,7 +206,7 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
     }
   };
 
-  // 개별 키워드 심층 확장 (196음절) - 구글/네이버 모두 지원
+  // 개별 키워드 심층 확장 (196음절) - 구글/네이버 모두 지원 (배치 호출)
   const handleExpandSingleKeyword = async (kw: string, platform: 'google' | 'naver' = 'naver') => {
     if (expandingKeywords.has(kw) || expandedKeywords.has(kw)) return;
 
@@ -143,20 +215,19 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
     const apiUrl = platform === 'google'
       ? '/api/google/autocomplete-expand'
       : '/api/naver/autocomplete-expand';
+    const batchSize = platform === 'google' ? GOOGLE_SYLLABLE_BATCH : NAVER_SYLLABLE_BATCH;
 
     try {
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword: kw, expandKeyword: kw }),
-      });
+      const results = await fetchExpandBatched(
+        apiUrl,
+        { keyword: kw, expandKeyword: kw },
+        batchSize,
+        (partialResults) => {
+          setPerKeywordResults(prev => ({ ...prev, [kw]: partialResults }));
+        }
+      );
 
-      if (!response.ok) throw new Error('API error');
-
-      const result = await response.json();
-      const newResults: ExpandedItem[] = result.data || [];
-
-      setPerKeywordResults(prev => ({ ...prev, [kw]: newResults }));
+      setPerKeywordResults(prev => ({ ...prev, [kw]: results }));
       setPerKeywordPlatform(prev => ({ ...prev, [kw]: platform }));
       setExpandedKeywords(prev => new Set(prev).add(kw));
     } catch (err) {
@@ -717,6 +788,26 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
             </div>
           </div>
         )}
+        {/* 확장 자동완성 진행 */}
+        {expandProgress && (
+          <div className="bg-slate-800 border border-emerald-500/30 rounded-2xl shadow-2xl px-6 py-4 flex items-center gap-4">
+            <Loader2 size={20} className="animate-spin text-emerald-400" />
+            <div>
+              <p className="text-sm font-bold text-white">
+                {expandProgress.platform === 'google' ? '구글' : '네이버'} 확장 자동완성 수집 중
+              </p>
+              <p className="text-xs text-slate-400">
+                196음절 중 {expandProgress.done}개 완료
+              </p>
+              <div className="mt-1.5 w-48 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                  style={{ width: `${(expandProgress.done / expandProgress.total) * 100}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
         {/* 전체 심층 확장 진행 */}
         {expandAllProgress && (
           <div className="bg-slate-800 border border-red-500/30 rounded-2xl shadow-2xl px-6 py-4 flex items-center gap-4">
@@ -748,7 +839,7 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
           const expandedData = isGoogle ? expandedGoogle : expandedNaver;
           const showExpanded = isGoogle ? showExpandedGoogle : showExpandedNaver;
           const handleExpand = isGoogle ? handleExpandGoogle : handleExpandNaver;
-          const isExpanding = isGoogle ? googleExpandMutation.isPending : naverExpandMutation.isPending;
+          const isExpanding = isGoogle ? isExpandingGoogle : isExpandingNaver;
 
           // 검색량 기준 정렬 함수
           const sortByVolume = <T extends { keyword: string }>(data: T[]): T[] => {

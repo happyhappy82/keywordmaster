@@ -93,7 +93,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { keyword, targetSuffix, expandKeyword } = body;
+    const { keyword, targetSuffix, expandKeyword, syllableStart, syllableCount } = body;
 
     if (!keyword || typeof keyword !== 'string') {
       return NextResponse.json(
@@ -101,6 +101,11 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // 음절 범위 지정 (클라이언트 배치 호출 지원)
+    const start = typeof syllableStart === 'number' ? syllableStart : 0;
+    const count = typeof syllableCount === 'number' ? syllableCount : KOREAN_SYLLABLES.length;
+    const syllablesToProcess = KOREAN_SYLLABLES.slice(start, start + count);
 
     const allResults: { keyword: string; volume: number; source: string; phase: string }[] = [];
     const seenKeywords = new Set<string>();
@@ -128,11 +133,11 @@ export async function POST(request: NextRequest) {
     // 모드 1: 개별 키워드 심층 확장 (196음절)
     // ========================================
     if (expandKeyword && typeof expandKeyword === 'string') {
-      console.log(`[NAVER EXPAND] Single keyword expand: "${expandKeyword}" with 196 syllables`);
+      console.log(`[NAVER EXPAND] Single keyword expand: "${expandKeyword}" syllables ${start}~${start + syllablesToProcess.length}`);
 
       let expandCount = 0;
-      for (let i = 0; i < KOREAN_SYLLABLES.length; i++) {
-        const syllable = KOREAN_SYLLABLES[i];
+      for (let i = 0; i < syllablesToProcess.length; i++) {
+        const syllable = syllablesToProcess[i];
         const expandedKeyword = `${expandKeyword} ${syllable}`;
 
         try {
@@ -194,10 +199,10 @@ export async function POST(request: NextRequest) {
     // ========================================
     // 모드 3: 단순 확장 (196음절)
     // ========================================
-    console.log('[NAVER EXPAND] Simple expand mode for:', keyword);
+    console.log(`[NAVER EXPAND] Simple expand for: ${keyword}, syllables ${start}~${start + syllablesToProcess.length}`);
 
-    for (let i = 0; i < KOREAN_SYLLABLES.length; i++) {
-      const syllable = KOREAN_SYLLABLES[i];
+    for (let i = 0; i < syllablesToProcess.length; i++) {
+      const syllable = syllablesToProcess[i];
       const expandedKeyword = `${keyword} ${syllable}`;
 
       try {
@@ -208,7 +213,7 @@ export async function POST(request: NextRequest) {
       }
 
       if ((i + 1) % 20 === 0) {
-        console.log(`[NAVER EXPAND] Progress: ${i + 1}/${KOREAN_SYLLABLES.length}`);
+        console.log(`[NAVER EXPAND] Progress: ${i + 1}/${syllablesToProcess.length}`);
       }
 
       await delay(50);

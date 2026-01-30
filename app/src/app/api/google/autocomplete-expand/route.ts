@@ -39,7 +39,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { keyword, expandKeyword } = body;
+    const { keyword, expandKeyword, syllableStart, syllableCount } = body;
 
     if (!keyword || typeof keyword !== 'string') {
       return NextResponse.json(
@@ -47,6 +47,11 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // 음절 범위 지정 (클라이언트 배치 호출 지원)
+    const start = typeof syllableStart === 'number' ? syllableStart : 0;
+    const count = typeof syllableCount === 'number' ? syllableCount : KOREAN_SYLLABLES.length;
+    const syllablesToProcess = KOREAN_SYLLABLES.slice(start, start + count);
 
     const allResults: { keyword: string; volume: number; source: string }[] = [];
     const seenKeywords = new Set<string>();
@@ -65,11 +70,11 @@ export async function POST(request: NextRequest) {
     // 모드 1: 개별 키워드 심층 확장 (196음절)
     // ========================================
     if (expandKeyword && typeof expandKeyword === 'string') {
-      console.log(`[GOOGLE EXPAND] Single keyword expand: "${expandKeyword}"`);
+      console.log(`[GOOGLE EXPAND] Single keyword expand: "${expandKeyword}" syllables ${start}~${start + syllablesToProcess.length}`);
 
       const batchSize = 10;
-      for (let i = 0; i < KOREAN_SYLLABLES.length; i += batchSize) {
-        const batch = KOREAN_SYLLABLES.slice(i, i + batchSize);
+      for (let i = 0; i < syllablesToProcess.length; i += batchSize) {
+        const batch = syllablesToProcess.slice(i, i + batchSize);
 
         const batchPromises = batch.map(async (syllable) => {
           try {
@@ -101,11 +106,11 @@ export async function POST(request: NextRequest) {
     // ========================================
     // 모드 2: 기본 196음절 확장
     // ========================================
-    console.log('[GOOGLE EXPAND] Simple expand for:', keyword);
+    console.log(`[GOOGLE EXPAND] Simple expand for: ${keyword}, syllables ${start}~${start + syllablesToProcess.length}`);
 
     const batchSize = 10;
-    for (let i = 0; i < KOREAN_SYLLABLES.length; i += batchSize) {
-      const batch = KOREAN_SYLLABLES.slice(i, i + batchSize);
+    for (let i = 0; i < syllablesToProcess.length; i += batchSize) {
+      const batch = syllablesToProcess.slice(i, i + batchSize);
 
       const batchPromises = batch.map(async (syllable) => {
         try {
@@ -121,7 +126,7 @@ export async function POST(request: NextRequest) {
         addResults(results, syllable);
       }
 
-      console.log(`[GOOGLE EXPAND] Batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(KOREAN_SYLLABLES.length / batchSize)}`);
+      console.log(`[GOOGLE EXPAND] Batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(syllablesToProcess.length / batchSize)}`);
       await delay(100);
     }
 
