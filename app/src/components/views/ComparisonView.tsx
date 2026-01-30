@@ -8,8 +8,6 @@ interface ComparisonViewProps {
   keyword: string;
   count: number;
   onDataLoaded?: (data: KeywordItem[]) => void;
-  onExport?: () => void;
-  isExporting?: boolean;
   onBack?: () => void;
 }
 
@@ -21,7 +19,7 @@ interface ComparisonSection {
   data: KeywordItem[];
 }
 
-export default function ComparisonView({ keyword, count, onDataLoaded, onExport, isExporting, onBack }: ComparisonViewProps) {
+export default function ComparisonView({ keyword, count, onDataLoaded, onBack }: ComparisonViewProps) {
   const { data: analysisData, isLoading, error } = useKeywordAnalysis(keyword, count);
 
   // 확장 자동완성 상태
@@ -309,6 +307,77 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
     return volumeMap[key] || 0;
   };
 
+  // CSV 내보내기 (클라이언트 사이드)
+  const handleExportCsv = (platform: 'google' | 'naver') => {
+    const isGoogle = platform === 'google';
+    const rows: Array<{ keyword: string; type: string; source: string; volume: number }> = [];
+    const seen = new Set<string>();
+
+    const addRow = (kw: string, type: string, src: string) => {
+      const key = kw.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      rows.push({
+        keyword: kw,
+        type,
+        source: src,
+        volume: getVolume(kw, platform),
+      });
+    };
+
+    // 1. 기본 자동완성
+    const sectionData = isGoogle ? analysisData?.data.googleAutocomplete : analysisData?.data.naverAutocomplete;
+    if (sectionData) {
+      for (const item of sectionData) addRow(item.keyword, '기본 자동완성', '기본');
+    }
+
+    // 2. 확장 ㄱ~ㅎ
+    const expanded = isGoogle ? expandedGoogle : expandedNaver;
+    for (const item of expanded) addRow(item.keyword, '확장 자동완성', item.source);
+
+    // 3. 수식어 (구글만)
+    if (isGoogle) {
+      for (const item of prefixGoogle) addRow(item.keyword, '수식어', item.source);
+      // 수식어 심층 확장 하위
+      for (const item of prefixGoogle) {
+        if (expandedKeywords.has(item.keyword)) {
+          for (const sub of (perKeywordResults[item.keyword] || [])) {
+            addRow(sub.keyword, '수식어 심층확장', `${item.keyword} > ${sub.source}`);
+          }
+        }
+      }
+    }
+
+    // 4. 심층 확장 (네이버만)
+    if (!isGoogle) {
+      for (const item of deepExpandedNaver) addRow(item.keyword, '심층 확장', item.source);
+      // 심층 확장 하위
+      for (const item of deepExpandedNaver) {
+        if (expandedKeywords.has(item.keyword)) {
+          for (const sub of (perKeywordResults[item.keyword] || [])) {
+            addRow(sub.keyword, '심층확장 하위', `${item.keyword} > ${sub.source}`);
+          }
+        }
+      }
+    }
+
+    // CSV 생성
+    const escCsv = (s: string) => `"${s.replace(/"/g, '""')}"`;
+    const header = '키워드,유형,출처,검색량';
+    const csvRows = rows.map(r => `${escCsv(r.keyword)},${escCsv(r.type)},${escCsv(r.source)},${r.volume}`);
+    const csvContent = '\uFEFF' + header + '\n' + csvRows.join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${keyword}_${isGoogle ? '구글' : '네이버'}_키워드_${Date.now()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  };
+
   // 키워드 복사 (줄바꿈으로 구분)
   const handleCopyKeywords = (source: 'google' | 'naver') => {
     const keywords = new Set<string>();
@@ -443,17 +512,21 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onExport,
 
         {/* 버튼 그룹 */}
         <div className="flex items-center gap-3">
-          {/* CSV 내보내기 버튼 */}
-          {onExport && (
-            <button
-              onClick={onExport}
-              disabled={isExporting}
-              className="flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all bg-slate-700 text-white hover:bg-slate-600 border border-slate-600 disabled:opacity-50"
-            >
-              <Download size={18} />
-              {isExporting ? '내보내는 중...' : 'CSV 내보내기'}
-            </button>
-          )}
+          {/* CSV 내보내기 버튼 (구글/네이버 별도) */}
+          <button
+            onClick={() => handleExportCsv('google')}
+            className="flex items-center gap-2 px-4 py-3 rounded-xl font-bold text-xs transition-all bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-500/30"
+          >
+            <Download size={16} />
+            구글 CSV
+          </button>
+          <button
+            onClick={() => handleExportCsv('naver')}
+            className="flex items-center gap-2 px-4 py-3 rounded-xl font-bold text-xs transition-all bg-[var(--naver)]/20 text-[var(--naver)] hover:bg-[var(--naver)]/30 border border-[var(--naver)]/30"
+          >
+            <Download size={16} />
+            네이버 CSV
+          </button>
 
           {/* 검색량 조회 버튼 */}
           <button
