@@ -199,21 +199,23 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
 
   // 수식어 생성 (앞에 붙는 수식어) - 구글만
   const handleGenerateModifiers = async () => {
-    if (modifiers.length > 0) {
-      setShowModifiers(!showModifiers);
+    if (prefixGoogle.length > 0) {
       setShowPrefixGoogle(!showPrefixGoogle);
       return;
     }
     try {
       setIsFetchingPrefix(true);
 
-      // 1. 수식어 생성
-      const generatedModifiers = await modifiersMutation.mutateAsync(keyword);
-      setModifiers(generatedModifiers);
-      setShowModifiers(true);
+      // 1. 수식어 생성 (이미 있으면 재사용)
+      let currentModifiers = modifiers;
+      if (currentModifiers.length === 0) {
+        currentModifiers = await modifiersMutation.mutateAsync(keyword);
+        setModifiers(currentModifiers);
+        setShowModifiers(true);
+      }
 
       // 2. 수식어 + 키워드 직접 조합 (자동완성 검증 없이 바로 표시)
-      const googleResults: ExpandedItem[] = generatedModifiers.map(modifier => ({
+      const googleResults: ExpandedItem[] = currentModifiers.map(modifier => ({
         keyword: `${modifier} ${keyword}`,
         volume: 0,
         source: modifier,
