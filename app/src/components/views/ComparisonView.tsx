@@ -170,6 +170,58 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
     }
   };
 
+  // 전체 심층 확장 (모든 키워드를 순차적으로 확장)
+  const [isExpandingAll, setIsExpandingAll] = useState<string | null>(null); // 'google' | 'naver' | null
+  const [expandAllProgress, setExpandAllProgress] = useState<{ done: number; total: number; platform: string } | null>(null);
+
+  const handleExpandAll = async (platform: 'google' | 'naver') => {
+    if (isExpandingAll) return;
+
+    // 확장할 키워드 목록 수집
+    const keywordsToExpand: string[] = [];
+    const isGoogle = platform === 'google';
+
+    // 기본 자동완성 키워드
+    const sectionData = isGoogle ? analysisData?.data.googleAutocomplete : analysisData?.data.naverAutocomplete;
+    if (sectionData) {
+      for (const item of sectionData) {
+        if (!expandedKeywords.has(item.keyword)) keywordsToExpand.push(item.keyword);
+      }
+    }
+
+    // 확장 자동완성 키워드
+    const expanded = isGoogle ? expandedGoogle : expandedNaver;
+    for (const item of expanded) {
+      if (!expandedKeywords.has(item.keyword)) keywordsToExpand.push(item.keyword);
+    }
+
+    // 수식어 키워드
+    const prefix = isGoogle ? prefixGoogle : prefixNaver;
+    for (const item of prefix) {
+      if (!expandedKeywords.has(item.keyword)) keywordsToExpand.push(item.keyword);
+    }
+
+    // 네이버 심층 확장 키워드
+    if (!isGoogle) {
+      for (const item of deepExpandedNaver) {
+        if (!expandedKeywords.has(item.keyword)) keywordsToExpand.push(item.keyword);
+      }
+    }
+
+    if (keywordsToExpand.length === 0) return;
+
+    setIsExpandingAll(platform);
+    setExpandAllProgress({ done: 0, total: keywordsToExpand.length, platform });
+
+    for (let i = 0; i < keywordsToExpand.length; i++) {
+      await handleExpandSingleKeyword(keywordsToExpand[i], platform);
+      setExpandAllProgress({ done: i + 1, total: keywordsToExpand.length, platform });
+    }
+
+    setIsExpandingAll(null);
+    setExpandAllProgress(null);
+  };
+
   // 데이터가 로드되면 상위 컴포넌트에 전달
   useEffect(() => {
     if (analysisData?.allData && onDataLoaded) {
@@ -634,26 +686,49 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
         </div>
       </div>
 
-      {/* 검색량 조회 진행 상태 팝업 */}
-      {volumeFetchProgress && (
-        <div className="fixed bottom-6 right-6 z-50 bg-slate-800 border border-slate-600 rounded-2xl shadow-2xl px-6 py-4 flex items-center gap-4">
-          <Loader2 size={20} className="animate-spin text-[var(--primary)]" />
-          <div>
-            <p className="text-sm font-bold text-white">
-              {volumeFetchProgress.platform === 'google' ? '구글' : '네이버'} 검색량 조회 중
-            </p>
-            <p className="text-xs text-slate-400">
-              {volumeFetchProgress.total}개 중 {volumeFetchProgress.done}개 완료
-            </p>
-            <div className="mt-1.5 w-48 h-1.5 bg-slate-700 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-[var(--primary)] rounded-full transition-all duration-300"
-                style={{ width: `${(volumeFetchProgress.done / volumeFetchProgress.total) * 100}%` }}
-              />
+      {/* 진행 상태 팝업들 */}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3">
+        {/* 검색량 조회 진행 */}
+        {volumeFetchProgress && (
+          <div className="bg-slate-800 border border-slate-600 rounded-2xl shadow-2xl px-6 py-4 flex items-center gap-4">
+            <Loader2 size={20} className="animate-spin text-[var(--primary)]" />
+            <div>
+              <p className="text-sm font-bold text-white">
+                {volumeFetchProgress.platform === 'google' ? '구글' : '네이버'} 검색량 조회 중
+              </p>
+              <p className="text-xs text-slate-400">
+                {volumeFetchProgress.total}개 중 {volumeFetchProgress.done}개 완료
+              </p>
+              <div className="mt-1.5 w-48 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-[var(--primary)] rounded-full transition-all duration-300"
+                  style={{ width: `${(volumeFetchProgress.done / volumeFetchProgress.total) * 100}%` }}
+                />
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+        {/* 전체 심층 확장 진행 */}
+        {expandAllProgress && (
+          <div className="bg-slate-800 border border-red-500/30 rounded-2xl shadow-2xl px-6 py-4 flex items-center gap-4">
+            <Loader2 size={20} className="animate-spin text-red-400" />
+            <div>
+              <p className="text-sm font-bold text-white">
+                {expandAllProgress.platform === 'google' ? '구글' : '네이버'} 전체 심층 확장 중
+              </p>
+              <p className="text-xs text-slate-400">
+                {expandAllProgress.total}개 중 {expandAllProgress.done}개 완료
+              </p>
+              <div className="mt-1.5 w-48 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-red-500 rounded-full transition-all duration-300"
+                  style={{ width: `${(expandAllProgress.done / expandAllProgress.total) * 100}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* 2-Grid Layout */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -861,6 +936,23 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
                       {showDeepExpandedNaver ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
                     </button>
                   )}
+                  {/* 전체 심층 확장 버튼 */}
+                  <button
+                    onClick={() => handleExpandAll(section.source as 'google' | 'naver')}
+                    disabled={!!isExpandingAll}
+                    className={`text-[9px] font-black uppercase tracking-tighter px-2 py-1 rounded transition-all flex items-center gap-1 ${
+                      isExpandingAll === section.source
+                        ? 'bg-red-500 text-white'
+                        : 'bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20'
+                    }`}
+                  >
+                    {isExpandingAll === section.source ? (
+                      <Loader2 size={10} className="animate-spin" />
+                    ) : (
+                      <Zap size={10} />
+                    )}
+                    전체 확장
+                  </button>
                   <button
                     onClick={() => handleCopyKeywords(section.source)}
                     className={`text-[9px] font-black uppercase tracking-tighter px-2 py-1 rounded transition-all flex items-center gap-1 ${
