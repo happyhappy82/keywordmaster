@@ -372,13 +372,22 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
       }
     }
 
+    // 클라이언트 측 중복 제거
+    const seen = new Set<string>();
+    const uniqueKeywords = allKeywords.filter(item => {
+      const key = item.keyword.toLowerCase().replace(/\s+/g, '');
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
     // 배치로 나눠서 순차 호출 (타임아웃 방지, 결과 즉시 반영)
     const BATCH_SIZE = 50;
     setIsFetchingVolumes(true);
-    setVolumeFetchProgress({ done: 0, total: allKeywords.length, platform });
+    setVolumeFetchProgress({ done: 0, total: uniqueKeywords.length, platform });
 
-    for (let i = 0; i < allKeywords.length; i += BATCH_SIZE) {
-      const batch = allKeywords.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < uniqueKeywords.length; i += BATCH_SIZE) {
+      const batch = uniqueKeywords.slice(i, i + BATCH_SIZE);
       try {
         const res = await fetch('/api/volume/bulk', {
           method: 'POST',
@@ -392,7 +401,7 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
       } catch (err) {
         console.error(`Volume batch error (${i}~${i + BATCH_SIZE}):`, err);
       }
-      setVolumeFetchProgress({ done: Math.min(i + BATCH_SIZE, allKeywords.length), total: allKeywords.length, platform });
+      setVolumeFetchProgress({ done: Math.min(i + BATCH_SIZE, uniqueKeywords.length), total: uniqueKeywords.length, platform });
     }
 
     setVolumesFetched(true);
