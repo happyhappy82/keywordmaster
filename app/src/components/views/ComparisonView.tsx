@@ -212,47 +212,14 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
       setModifiers(generatedModifiers);
       setShowModifiers(true);
 
-      // 2. 수식어 + 키워드 조합 생성
-      const prefixCombinations = generatedModifiers.map(modifier => `${modifier} ${keyword}`);
+      // 2. 수식어 + 키워드 직접 조합 (자동완성 검증 없이 바로 표시)
+      const googleResults: ExpandedItem[] = generatedModifiers.map(modifier => ({
+        keyword: `${modifier} ${keyword}`,
+        volume: 0,
+        source: modifier,
+      }));
 
-      // 3. 각 조합으로 구글 자동완성 조회 (실제 자동완성에 있는 것만 표시)
-      const googleResults: ExpandedItem[] = [];
-
-      // Google 자동완성 (병렬) - 결과가 있는 것만 추가
-      const googlePromises = prefixCombinations.map(async (query) => {
-        const modifier = query.split(' ')[0];
-        try {
-          const res = await fetch('/api/google/autocomplete', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ keyword: query }),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.data && data.data.length > 0) {
-              // 자동완성 결과가 있으면 해당 결과들만 추가
-              return data.data.map((item: { keyword: string }) => ({
-                keyword: item.keyword,
-                volume: 0,
-                source: modifier,
-              }));
-            }
-          }
-        } catch (err) {
-          console.error(`Google autocomplete error for "${query}":`, err);
-        }
-        return []; // 결과 없으면 빈 배열
-      });
-
-      const googleAllResults = await Promise.all(googlePromises);
-      googleAllResults.forEach(items => googleResults.push(...items));
-
-      // 중복 제거
-      const uniqueGoogle = googleResults.filter((item, idx, arr) =>
-        arr.findIndex(i => i.keyword.toLowerCase() === item.keyword.toLowerCase()) === idx
-      );
-
-      setPrefixGoogle(uniqueGoogle);
+      setPrefixGoogle(googleResults);
       setShowPrefixGoogle(true);
       setIsFetchingPrefix(false);
     } catch (err) {
@@ -262,7 +229,7 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
     }
   };
 
-  // 네이버 수식어 생성 + 네이버 자동완성 검증
+  // 네이버 수식어 생성 (자동완성 검증 없이 직접 조합)
   const handleGenerateNaverModifiers = async () => {
     if (prefixNaver.length > 0) {
       setShowPrefixNaver(!showPrefixNaver);
@@ -279,43 +246,14 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
         setShowModifiers(true);
       }
 
-      // 2. 수식어 + 키워드 조합으로 네이버 자동완성 조회
-      const prefixCombinations = currentModifiers.map(modifier => `${modifier} ${keyword}`);
-      const naverResults: ExpandedItem[] = [];
+      // 2. 수식어 + 키워드 직접 조합 (자동완성 검증 없이 바로 표시)
+      const naverResults: ExpandedItem[] = currentModifiers.map(modifier => ({
+        keyword: `${modifier} ${keyword}`,
+        volume: 0,
+        source: modifier,
+      }));
 
-      const naverPromises = prefixCombinations.map(async (query) => {
-        const modifier = query.split(' ')[0];
-        try {
-          const res = await fetch('/api/naver/autocomplete', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ keyword: query }),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.data && data.data.length > 0) {
-              return data.data.map((item: { keyword: string }) => ({
-                keyword: item.keyword,
-                volume: 0,
-                source: modifier,
-              }));
-            }
-          }
-        } catch (err) {
-          console.error(`Naver autocomplete error for "${query}":`, err);
-        }
-        return [];
-      });
-
-      const naverAllResults = await Promise.all(naverPromises);
-      naverAllResults.forEach(items => naverResults.push(...items));
-
-      // 중복 제거
-      const uniqueNaver = naverResults.filter((item, idx, arr) =>
-        arr.findIndex(i => i.keyword.toLowerCase() === item.keyword.toLowerCase()) === idx
-      );
-
-      setPrefixNaver(uniqueNaver);
+      setPrefixNaver(naverResults);
       setShowPrefixNaver(true);
       setIsFetchingPrefixNaver(false);
     } catch (err) {
