@@ -49,10 +49,15 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
   const [modifiers, setModifiers] = useState<string[]>([]);
   const [showModifiers, setShowModifiers] = useState(false);
 
-  // 수식어 자동완성 상태 (구글만)
+  // 수식어 자동완성 상태 (구글)
   const [prefixGoogle, setPrefixGoogle] = useState<ExpandedItem[]>([]);
   const [showPrefixGoogle, setShowPrefixGoogle] = useState(false);
   const [isFetchingPrefix, setIsFetchingPrefix] = useState(false);
+
+  // 수식어 자동완성 상태 (네이버)
+  const [prefixNaver, setPrefixNaver] = useState<ExpandedItem[]>([]);
+  const [showPrefixNaver, setShowPrefixNaver] = useState(false);
+  const [isFetchingPrefixNaver, setIsFetchingPrefixNaver] = useState(false);
 
   const googleExpandMutation = useExpandedAutocomplete();
   const naverExpandMutation = useExpandedAutocomplete();
@@ -188,6 +193,8 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
     setShowModifiers(false);
     setPrefixGoogle([]);
     setShowPrefixGoogle(false);
+    setPrefixNaver([]);
+    setShowPrefixNaver(false);
   }, [keyword]);
 
   // 수식어 생성 (앞에 붙는 수식어) - 구글만
@@ -255,6 +262,69 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
     }
   };
 
+  // 네이버 수식어 생성 + 네이버 자동완성 검증
+  const handleGenerateNaverModifiers = async () => {
+    if (prefixNaver.length > 0) {
+      setShowPrefixNaver(!showPrefixNaver);
+      return;
+    }
+    try {
+      setIsFetchingPrefixNaver(true);
+
+      // 1. 수식어 생성 (이미 있으면 재사용)
+      let currentModifiers = modifiers;
+      if (currentModifiers.length === 0) {
+        currentModifiers = await modifiersMutation.mutateAsync(keyword);
+        setModifiers(currentModifiers);
+        setShowModifiers(true);
+      }
+
+      // 2. 수식어 + 키워드 조합으로 네이버 자동완성 조회
+      const prefixCombinations = currentModifiers.map(modifier => `${modifier} ${keyword}`);
+      const naverResults: ExpandedItem[] = [];
+
+      const naverPromises = prefixCombinations.map(async (query) => {
+        const modifier = query.split(' ')[0];
+        try {
+          const res = await fetch('/api/naver/autocomplete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ keyword: query }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.data && data.data.length > 0) {
+              return data.data.map((item: { keyword: string }) => ({
+                keyword: item.keyword,
+                volume: 0,
+                source: modifier,
+              }));
+            }
+          }
+        } catch (err) {
+          console.error(`Naver autocomplete error for "${query}":`, err);
+        }
+        return [];
+      });
+
+      const naverAllResults = await Promise.all(naverPromises);
+      naverAllResults.forEach(items => naverResults.push(...items));
+
+      // 중복 제거
+      const uniqueNaver = naverResults.filter((item, idx, arr) =>
+        arr.findIndex(i => i.keyword.toLowerCase() === item.keyword.toLowerCase()) === idx
+      );
+
+      setPrefixNaver(uniqueNaver);
+      setShowPrefixNaver(true);
+      setIsFetchingPrefixNaver(false);
+    } catch (err) {
+      console.error('Naver modifier generation error:', err);
+      alert('수식어 생성에 실패했습니다. Gemini API 키를 확인해주세요.');
+      setIsFetchingPrefixNaver(false);
+    }
+  };
+
   // 검색량 일괄 조회
   const handleFetchVolumes = async () => {
     if (!analysisData) return;
@@ -277,6 +347,11 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
     // 수식어 자동완성 키워드 추가 (구글만)
     for (const item of prefixGoogle) {
       allKeywords.push({ keyword: item.keyword, source: 'google' });
+    }
+
+    // 네이버 수식어 자동완성 키워드 추가
+    for (const item of prefixNaver) {
+      allKeywords.push({ keyword: item.keyword, source: 'naver' });
     }
 
     // 네이버 심층 확장 키워드 추가
@@ -348,7 +423,19 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
       }
     }
 
-    // 4. 심층 확장 (네이버만)
+    // 4. 수식어 (네이버)
+    if (!isGoogle) {
+      for (const item of prefixNaver) addRow(item.keyword, '수식어', item.source);
+      for (const item of prefixNaver) {
+        if (expandedKeywords.has(item.keyword)) {
+          for (const sub of (perKeywordResults[item.keyword] || [])) {
+            addRow(sub.keyword, '수식어 심층확장', `${item.keyword} > ${sub.source}`);
+          }
+        }
+      }
+    }
+
+    // 5. 심층 확장 (네이버만)
     if (!isGoogle) {
       for (const item of deepExpandedNaver) addRow(item.keyword, '심층 확장', item.source);
       // 심층 확장 하위
@@ -400,6 +487,16 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
     if (isGoogle && showPrefixGoogle) {
       for (const item of prefixGoogle) keywords.add(item.keyword);
       for (const item of prefixGoogle) {
+        if (expandedKeywords.has(item.keyword)) {
+          for (const sub of (perKeywordResults[item.keyword] || [])) keywords.add(sub.keyword);
+        }
+      }
+    }
+
+    // 수식어 (네이버)
+    if (!isGoogle && showPrefixNaver) {
+      for (const item of prefixNaver) keywords.add(item.keyword);
+      for (const item of prefixNaver) {
         if (expandedKeywords.has(item.keyword)) {
           for (const sub of (perKeywordResults[item.keyword] || [])) keywords.add(sub.keyword);
         }
@@ -586,6 +683,7 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
           const sortedExpandedData = sortByVolume(expandedData);
           const sortedDeepExpandedNaver = !isGoogle ? sortByVolume(deepExpandedNaver) : [];
           const sortedPrefixGoogle = isGoogle ? sortByVolume(prefixGoogle) : [];
+          const sortedPrefixNaver = !isGoogle ? sortByVolume(prefixNaver) : [];
 
           // 통합 정렬 리스트 (검색량 조회 후 모든 키워드를 검색량순으로 정렬)
           const unifiedSortedList = (() => {
@@ -612,6 +710,20 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
               }
               // 수식어 심층 확장 결과
               for (const item of prefixGoogle) {
+                if (expandedKeywords.has(item.keyword)) {
+                  for (const sub of (perKeywordResults[item.keyword] || [])) {
+                    items.push({ keyword: sub.keyword, badge: sub.source, badgeClass: 'bg-purple-900/30 text-purple-300', bgClass: 'bg-purple-900/10' });
+                  }
+                }
+              }
+            }
+
+            // 수식어 (네이버)
+            if (!isGoogle && showPrefixNaver) {
+              for (const item of prefixNaver) {
+                items.push({ keyword: item.keyword, badge: '수식어', badgeClass: 'bg-purple-500/20 text-purple-400', bgClass: 'bg-purple-500/5' });
+              }
+              for (const item of prefixNaver) {
                 if (expandedKeywords.has(item.keyword)) {
                   for (const sub of (perKeywordResults[item.keyword] || [])) {
                     items.push({ keyword: sub.keyword, badge: sub.source, badgeClass: 'bg-purple-900/30 text-purple-300', bgClass: 'bg-purple-900/10' });
@@ -705,6 +817,28 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
                         ? `수식어 ${prefixGoogle.length}개`
                         : '수식어'}
                       {showPrefixGoogle ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+                    </button>
+                  )}
+                  {/* 네이버 수식어 생성 버튼 */}
+                  {!isGoogle && (
+                    <button
+                      onClick={handleGenerateNaverModifiers}
+                      disabled={modifiersMutation.isPending || isFetchingPrefixNaver}
+                      className={`text-[9px] font-black uppercase tracking-tighter px-2 py-1 rounded transition-all flex items-center gap-1 ${
+                        showPrefixNaver
+                          ? 'bg-purple-500 text-white'
+                          : 'bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 border border-purple-500/20'
+                      }`}
+                    >
+                      {modifiersMutation.isPending || isFetchingPrefixNaver ? (
+                        <Loader2 size={10} className="animate-spin" />
+                      ) : (
+                        <Wand2 size={10} />
+                      )}
+                      {prefixNaver.length > 0
+                        ? `수식어 ${prefixNaver.length}개`
+                        : '수식어'}
+                      {showPrefixNaver ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
                     </button>
                   )}
                   {/* 네이버 심층 확장 버튼 (Phase 1: 점진적 타이핑) */}
@@ -918,6 +1052,109 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
                                       {volumesFetched
                                         ? (getVolume(sub.keyword, 'google') > 0
                                             ? getVolume(sub.keyword, 'google').toLocaleString()
+                                            : '-')
+                                        : <span className="text-slate-600">-</span>
+                                      }
+                                    </td>
+                                  </tr>
+                                ))}
+                              </React.Fragment>
+                            );
+                          })}
+                        </>
+                      )}
+
+                      {/* 수식어 자동완성 데이터 (네이버만) - 맨 위 */}
+                      {!isGoogle && showPrefixNaver && sortedPrefixNaver.length > 0 && (
+                        <>
+                          <tr className="bg-purple-500/10">
+                            <td colSpan={2} className="px-5 py-2 text-[10px] font-black uppercase tracking-widest text-purple-400">
+                              수식어 자동완성 - {sortedPrefixNaver.length}개 {volumesFetched && '(검색량순)'}
+                            </td>
+                          </tr>
+                          {sortedPrefixNaver.map((item, kIdx) => {
+                            const isExpandingItem = expandingKeywords.has(item.keyword);
+                            const isExpandedItem = expandedKeywords.has(item.keyword);
+                            const subResults = perKeywordResults[item.keyword] || [];
+                            const sortedSubResults = volumesFetched
+                              ? [...subResults].sort((a, b) => getVolume(b.keyword, 'naver') - getVolume(a.keyword, 'naver'))
+                              : subResults;
+
+                            return (
+                              <React.Fragment key={`naver-prefix-${kIdx}`}>
+                                <tr className="hover:bg-white/[0.04] group transition-all bg-purple-500/5">
+                                  <td className="px-5 py-3">
+                                    <div className="flex flex-col gap-1.5">
+                                      <span className="font-bold text-slate-200 group-hover:text-white transition-colors break-words">
+                                        {item.keyword}
+                                      </span>
+                                      <div className="flex items-center gap-2">
+                                        <a
+                                          href={`https://search.naver.com/search.naver?query=${encodeURIComponent(item.keyword)}`}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="text-[9px] font-black uppercase tracking-tighter px-2.5 py-1 rounded bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500 hover:text-white transition-all flex items-center gap-1.5"
+                                        >
+                                          <Globe size={10} /> NAVER 검색
+                                        </a>
+                                        <button
+                                          onClick={() => handleExpandSingleKeyword(item.keyword, 'naver')}
+                                          disabled={isExpandingItem || isExpandedItem}
+                                          className={`text-[9px] font-black uppercase tracking-tighter px-2.5 py-1 rounded transition-all flex items-center gap-1.5 ${
+                                            isExpandedItem
+                                              ? 'bg-purple-500 text-white'
+                                              : 'bg-purple-500/10 text-purple-400 border border-purple-500/20 hover:bg-purple-500/30'
+                                          }`}
+                                        >
+                                          {isExpandingItem ? (
+                                            <Loader2 size={10} className="animate-spin" />
+                                          ) : (
+                                            <Zap size={10} />
+                                          )}
+                                          {isExpandedItem ? `확장 ${subResults.length}개` : isExpandingItem ? '확장 중...' : '심층 확장'}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-5 py-3 text-right font-mono text-slate-500 text-xs font-medium">
+                                    {volumesFetched
+                                      ? (getVolume(item.keyword, 'naver') > 0
+                                          ? getVolume(item.keyword, 'naver').toLocaleString()
+                                          : '-')
+                                      : <span className="text-slate-600">-</span>
+                                    }
+                                  </td>
+                                </tr>
+                                {/* 개별 키워드 심층 확장 결과 */}
+                                {isExpandedItem && sortedSubResults.map((sub, sIdx) => (
+                                  <tr
+                                    key={`naver-prefix-${kIdx}-sub-${sIdx}`}
+                                    className="hover:bg-white/[0.04] group transition-all bg-purple-900/10"
+                                  >
+                                    <td className="px-5 py-2 pl-10">
+                                      <div className="flex flex-col gap-1">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-purple-900/30 text-purple-300">
+                                            {sub.source}
+                                          </span>
+                                          <span className="text-sm font-medium text-slate-300 group-hover:text-white transition-colors break-words">
+                                            {sub.keyword}
+                                          </span>
+                                        </div>
+                                        <a
+                                          href={`https://search.naver.com/search.naver?query=${encodeURIComponent(sub.keyword)}`}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="text-[9px] font-black uppercase tracking-tighter px-2 py-0.5 rounded bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500 hover:text-white transition-all inline-flex items-center gap-1 w-fit"
+                                        >
+                                          <Globe size={9} /> NAVER
+                                        </a>
+                                      </div>
+                                    </td>
+                                    <td className="px-5 py-2 text-right font-mono text-slate-500 text-xs font-medium">
+                                      {volumesFetched
+                                        ? (getVolume(sub.keyword, 'naver') > 0
+                                            ? getVolume(sub.keyword, 'naver').toLocaleString()
                                             : '-')
                                         : <span className="text-slate-600">-</span>
                                       }
