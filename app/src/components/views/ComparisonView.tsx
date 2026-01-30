@@ -241,16 +241,20 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
     }
   };
 
-  // 전체 심층 확장 (모든 키워드를 순차적으로 확장)
-  const [isExpandingAll, setIsExpandingAll] = useState<string | null>(null); // 'google' | 'naver' | null
-  const [expandAllProgress, setExpandAllProgress] = useState<{ done: number; total: number; platform: string } | null>(null);
+  // 전체 심층 확장 (구글/네이버 독립 실행, 3개 병렬)
+  const [isExpandingAllGoogle, setIsExpandingAllGoogle] = useState(false);
+  const [isExpandingAllNaver, setIsExpandingAllNaver] = useState(false);
+  const [expandAllProgressGoogle, setExpandAllProgressGoogle] = useState<{ done: number; total: number } | null>(null);
+  const [expandAllProgressNaver, setExpandAllProgressNaver] = useState<{ done: number; total: number } | null>(null);
+
+  const PARALLEL_EXPAND = 3; // 동시 확장 키워드 수
 
   const handleExpandAll = async (platform: 'google' | 'naver') => {
-    if (isExpandingAll) return;
+    const isGoogle = platform === 'google';
+    if (isGoogle ? isExpandingAllGoogle : isExpandingAllNaver) return;
 
     // 확장할 키워드 목록 수집
     const keywordsToExpand: string[] = [];
-    const isGoogle = platform === 'google';
 
     // 기본 자동완성 키워드
     const sectionData = isGoogle ? analysisData?.data.googleAutocomplete : analysisData?.data.naverAutocomplete;
@@ -281,16 +285,23 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
 
     if (keywordsToExpand.length === 0) return;
 
-    setIsExpandingAll(platform);
-    setExpandAllProgress({ done: 0, total: keywordsToExpand.length, platform });
+    const setIsExpanding = isGoogle ? setIsExpandingAllGoogle : setIsExpandingAllNaver;
+    const setProgress = isGoogle ? setExpandAllProgressGoogle : setExpandAllProgressNaver;
 
-    for (let i = 0; i < keywordsToExpand.length; i++) {
-      await handleExpandSingleKeyword(keywordsToExpand[i], platform);
-      setExpandAllProgress({ done: i + 1, total: keywordsToExpand.length, platform });
+    setIsExpanding(true);
+    setProgress({ done: 0, total: keywordsToExpand.length });
+
+    // 3개씩 병렬 확장
+    let doneCount = 0;
+    for (let i = 0; i < keywordsToExpand.length; i += PARALLEL_EXPAND) {
+      const batch = keywordsToExpand.slice(i, i + PARALLEL_EXPAND);
+      await Promise.all(batch.map(kw => handleExpandSingleKeyword(kw, platform)));
+      doneCount += batch.length;
+      setProgress({ done: doneCount, total: keywordsToExpand.length });
     }
 
-    setIsExpandingAll(null);
-    setExpandAllProgress(null);
+    setIsExpanding(false);
+    setProgress(null);
   };
 
   // 데이터가 로드되면 상위 컴포넌트에 전달
@@ -808,21 +819,41 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
             </div>
           </div>
         )}
-        {/* 전체 심층 확장 진행 */}
-        {expandAllProgress && (
+        {/* 구글 전체 심층 확장 진행 */}
+        {expandAllProgressGoogle && (
           <div className="bg-slate-800 border border-red-500/30 rounded-2xl shadow-2xl px-6 py-4 flex items-center gap-4">
             <Loader2 size={20} className="animate-spin text-red-400" />
             <div>
               <p className="text-sm font-bold text-white">
-                {expandAllProgress.platform === 'google' ? '구글' : '네이버'} 전체 심층 확장 중
+                구글 전체 심층 확장 중
               </p>
               <p className="text-xs text-slate-400">
-                {expandAllProgress.total}개 중 {expandAllProgress.done}개 완료
+                {expandAllProgressGoogle.total}개 중 {expandAllProgressGoogle.done}개 완료
               </p>
               <div className="mt-1.5 w-48 h-1.5 bg-slate-700 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-red-500 rounded-full transition-all duration-300"
-                  style={{ width: `${(expandAllProgress.done / expandAllProgress.total) * 100}%` }}
+                  style={{ width: `${(expandAllProgressGoogle.done / expandAllProgressGoogle.total) * 100}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+        {/* 네이버 전체 심층 확장 진행 */}
+        {expandAllProgressNaver && (
+          <div className="bg-slate-800 border border-green-500/30 rounded-2xl shadow-2xl px-6 py-4 flex items-center gap-4">
+            <Loader2 size={20} className="animate-spin text-green-400" />
+            <div>
+              <p className="text-sm font-bold text-white">
+                네이버 전체 심층 확장 중
+              </p>
+              <p className="text-xs text-slate-400">
+                {expandAllProgressNaver.total}개 중 {expandAllProgressNaver.done}개 완료
+              </p>
+              <div className="mt-1.5 w-48 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-green-500 rounded-full transition-all duration-300"
+                  style={{ width: `${(expandAllProgressNaver.done / expandAllProgressNaver.total) * 100}%` }}
                 />
               </div>
             </div>
@@ -1039,14 +1070,14 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
                   {/* 전체 심층 확장 버튼 */}
                   <button
                     onClick={() => handleExpandAll(section.source as 'google' | 'naver')}
-                    disabled={!!isExpandingAll}
+                    disabled={isGoogle ? isExpandingAllGoogle : isExpandingAllNaver}
                     className={`text-[9px] font-black uppercase tracking-tighter px-2 py-1 rounded transition-all flex items-center gap-1 ${
-                      isExpandingAll === section.source
+                      (isGoogle ? isExpandingAllGoogle : isExpandingAllNaver)
                         ? 'bg-red-500 text-white'
                         : 'bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20'
                     }`}
                   >
-                    {isExpandingAll === section.source ? (
+                    {(isGoogle ? isExpandingAllGoogle : isExpandingAllNaver) ? (
                       <Loader2 size={10} className="animate-spin" />
                     ) : (
                       <Zap size={10} />
@@ -1212,8 +1243,8 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
                                     }
                                   </td>
                                 </tr>
-                                {/* 개별 키워드 심층 확장 결과 */}
-                                {isExpandedItem && sortedSubResults.map((sub, sIdx) => (
+                                {/* 개별 키워드 심층 확장 결과 (확장 중에도 표시) */}
+                                {(isExpandedItem || isExpandingItem) && subResults.length > 0 && sortedSubResults.map((sub, sIdx) => (
                                   <tr
                                     key={`prefix-${kIdx}-sub-${sIdx}`}
                                     className="hover:bg-white/[0.04] group transition-all bg-purple-900/10"
@@ -1315,8 +1346,8 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
                                     }
                                   </td>
                                 </tr>
-                                {/* 개별 키워드 심층 확장 결과 */}
-                                {isExpandedItem && sortedSubResults.map((sub, sIdx) => (
+                                {/* 개별 키워드 심층 확장 결과 (확장 중에도 표시) */}
+                                {(isExpandedItem || isExpandingItem) && subResults.length > 0 && sortedSubResults.map((sub, sIdx) => (
                                   <tr
                                     key={`naver-prefix-${kIdx}-sub-${sIdx}`}
                                     className="hover:bg-white/[0.04] group transition-all bg-purple-900/10"
@@ -1528,8 +1559,8 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
                                     }
                                   </td>
                                 </tr>
-                                {/* 개별 키워드 심층 확장 결과 */}
-                                {isExpanded && sortedSubResults.map((sub, sIdx) => (
+                                {/* 개별 키워드 심층 확장 결과 (확장 중에도 표시) */}
+                                {(isExpanded || isExpanding) && subResults.length > 0 && sortedSubResults.map((sub, sIdx) => (
                                   <tr
                                     key={`deep-${kIdx}-sub-${sIdx}`}
                                     className="hover:bg-white/[0.04] group transition-all bg-orange-900/10"
