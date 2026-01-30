@@ -266,50 +266,61 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
   };
 
   // 검색량 일괄 조회
-  const handleFetchVolumes = async () => {
+  const handleFetchVolumes = async (platform: 'google' | 'naver') => {
     if (!analysisData) return;
 
+    const isGoogle = platform === 'google';
     const allKeywords: { keyword: string; source: 'google' | 'naver' }[] = [];
 
     // 기본 키워드 추가
     for (const item of analysisData.allData) {
-      allKeywords.push({ keyword: item.keyword, source: item.source });
+      if ((isGoogle && item.source === 'google') || (!isGoogle && item.source === 'naver')) {
+        allKeywords.push({ keyword: item.keyword, source: item.source });
+      }
     }
 
     // 확장 자동완성 키워드 추가
-    for (const item of expandedGoogle) {
-      allKeywords.push({ keyword: item.keyword, source: 'google' });
-    }
-    for (const item of expandedNaver) {
-      allKeywords.push({ keyword: item.keyword, source: 'naver' });
-    }
-
-    // 수식어 자동완성 키워드 추가 (구글만)
-    for (const item of prefixGoogle) {
-      allKeywords.push({ keyword: item.keyword, source: 'google' });
+    if (isGoogle) {
+      for (const item of expandedGoogle) {
+        allKeywords.push({ keyword: item.keyword, source: 'google' });
+      }
+    } else {
+      for (const item of expandedNaver) {
+        allKeywords.push({ keyword: item.keyword, source: 'naver' });
+      }
     }
 
-    // 네이버 수식어 자동완성 키워드 추가
-    for (const item of prefixNaver) {
-      allKeywords.push({ keyword: item.keyword, source: 'naver' });
+    // 수식어 키워드 추가
+    if (isGoogle) {
+      for (const item of prefixGoogle) {
+        allKeywords.push({ keyword: item.keyword, source: 'google' });
+      }
+    } else {
+      for (const item of prefixNaver) {
+        allKeywords.push({ keyword: item.keyword, source: 'naver' });
+      }
     }
 
     // 네이버 심층 확장 키워드 추가
-    for (const item of deepExpandedNaver) {
-      allKeywords.push({ keyword: item.keyword, source: 'naver' });
+    if (!isGoogle) {
+      for (const item of deepExpandedNaver) {
+        allKeywords.push({ keyword: item.keyword, source: 'naver' });
+      }
     }
 
     // 개별 키워드 심층 확장 결과 추가
     for (const [parentKw, items] of Object.entries(perKeywordResults)) {
-      const platform = perKeywordPlatform[parentKw] || 'naver';
-      for (const item of items) {
-        allKeywords.push({ keyword: item.keyword, source: platform });
+      const p = perKeywordPlatform[parentKw] || 'naver';
+      if (p === platform) {
+        for (const item of items) {
+          allKeywords.push({ keyword: item.keyword, source: p });
+        }
       }
     }
 
     try {
       const result = await bulkVolumeMutation.mutateAsync(allKeywords);
-      setVolumeMap(result.volumeMap);
+      setVolumeMap(prev => ({ ...prev, ...result.volumeMap }));
       setVolumesFetched(true);
     } catch (err) {
       console.error('Volume fetch error:', err);
@@ -565,34 +576,39 @@ export default function ComparisonView({ keyword, count, onDataLoaded, onBack }:
             네이버 CSV
           </button>
 
-          {/* 검색량 조회 버튼 */}
+          {/* 검색량 조회 버튼 - 구글 */}
           <button
-            onClick={handleFetchVolumes}
+            onClick={() => handleFetchVolumes('google')}
             disabled={bulkVolumeMutation.isPending}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all ${
+            className={`flex items-center gap-2 px-4 py-3 rounded-xl font-bold text-xs transition-all ${
               bulkVolumeMutation.isPending
                 ? 'bg-slate-700 text-slate-400 cursor-wait'
-                : volumesFetched
-                ? 'bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30'
-                : 'bg-[var(--primary)] text-white hover:bg-[var(--primary)]/90 shadow-lg shadow-[var(--primary)]/30'
+                : 'bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30'
             }`}
           >
             {bulkVolumeMutation.isPending ? (
-              <>
-                <Loader2 size={18} className="animate-spin" />
-                검색량 조회 중...
-              </>
-            ) : volumesFetched ? (
-              <>
-                <BarChart3 size={18} />
-                검색량 다시 조회
-              </>
+              <Loader2 size={16} className="animate-spin" />
             ) : (
-              <>
-                <BarChart3 size={18} />
-                검색량 조회하기
-              </>
+              <BarChart3 size={16} />
             )}
+            구글 검색량
+          </button>
+          {/* 검색량 조회 버튼 - 네이버 */}
+          <button
+            onClick={() => handleFetchVolumes('naver')}
+            disabled={bulkVolumeMutation.isPending}
+            className={`flex items-center gap-2 px-4 py-3 rounded-xl font-bold text-xs transition-all ${
+              bulkVolumeMutation.isPending
+                ? 'bg-slate-700 text-slate-400 cursor-wait'
+                : 'bg-[var(--naver)]/20 text-[var(--naver)] border border-[var(--naver)]/30 hover:bg-[var(--naver)]/30'
+            }`}
+          >
+            {bulkVolumeMutation.isPending ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <BarChart3 size={16} />
+            )}
+            네이버 검색량
           </button>
         </div>
       </div>
