@@ -20,6 +20,10 @@
   --error: #ef4444;
   --warning: #f59e0b;
   --info: #3b82f6;
+
+  /* Backlink Colors */
+  --dofollow: #10b981;
+  --nofollow: #ef4444;
 }
 
 @theme inline {

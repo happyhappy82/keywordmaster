@@ -3,7 +3,7 @@ import axios, { AxiosInstance } from 'axios';
 const DATAFORSEO_BASE_URL = 'https://api.dataforseo.com/v3';
 
 // DataForSEO API 클라이언트 생성
-function createDataForSEOClient(): AxiosInstance {
+export function createDataForSEOClient(): AxiosInstance {
   const login = process.env.DATAFORSEO_LOGIN;
   const password = process.env.DATAFORSEO_PASSWORD;
 
