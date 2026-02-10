@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Search, Globe, Link2, Anchor, TrendingUp, ArrowUpDown, Users, BarChart3, Loader2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Globe, Link2, Anchor, TrendingUp, ArrowUpDown, Users, BarChart3, Loader2, AlertTriangle } from 'lucide-react';
 import { useBacklinkSummary } from '@/lib/hooks/useBacklinkAnalysis';
 import type { BacklinkSubTab } from '@/types/backlinks';
 import DomainOverview from '@/components/backlinks/DomainOverview';
@@ -28,6 +28,12 @@ export default function BacklinkView() {
   const [domain, setDomain] = useState('');
   const [analyzedDomain, setAnalyzedDomain] = useState<string | null>(null);
   const [activeSubTab, setActiveSubTab] = useState<BacklinkSubTab>('overview');
+  const [activatedTabs, setActivatedTabs] = useState<Set<BacklinkSubTab>>(new Set());
+
+  // 도메인 변경 시 활성화된 탭 초기화 (개요는 자동, 나머지는 수동)
+  useEffect(() => {
+    setActivatedTabs(new Set());
+  }, [analyzedDomain]);
 
   const { data: summaryData, isLoading: summaryLoading, error: summaryError } = useBacklinkSummary(analyzedDomain);
 
@@ -37,6 +43,35 @@ export default function BacklinkView() {
     setAnalyzedDomain(trimmed);
     setActiveSubTab('overview');
   };
+
+  const activateTab = () => {
+    setActivatedTabs(prev => new Set([...prev, activeSubTab]));
+  };
+
+  const renderAnalysisPrompt = (tabLabel: string, cost: string) => (
+    <div className="flex flex-col items-center justify-center py-20 gap-5">
+      <div className="w-16 h-16 rounded-2xl bg-[var(--primary)]/10 flex items-center justify-center">
+        <Search size={28} className="text-[var(--primary)]" />
+      </div>
+      <div className="text-center space-y-2">
+        <h3 className="text-lg font-semibold">{tabLabel} 분석</h3>
+        <p className="text-sm text-[var(--text-secondary)]">
+          {analyzedDomain}의 {tabLabel} 데이터를 조회합니다.
+        </p>
+      </div>
+      <button
+        onClick={activateTab}
+        className="px-8 py-3 bg-[var(--primary)] text-white rounded-xl font-medium hover:opacity-90 transition-opacity flex items-center gap-2"
+      >
+        <Search size={16} />
+        분석 시작
+      </button>
+      <div className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+        <AlertTriangle size={12} />
+        <span>API 호출 비용: {cost}</span>
+      </div>
+    </div>
+  );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') handleAnalyze();
@@ -59,16 +94,22 @@ export default function BacklinkView() {
       case 'overview':
         return <DomainOverview data={summaryData} isLoading={summaryLoading} error={summaryError} />;
       case 'backlinks':
+        if (!activatedTabs.has('backlinks')) return renderAnalysisPrompt('백링크', '$0.02+');
         return <BacklinkList target={analyzedDomain} />;
       case 'referring-domains':
+        if (!activatedTabs.has('referring-domains')) return renderAnalysisPrompt('참조도메인', '$0.02+');
         return <ReferringDomains target={analyzedDomain} />;
       case 'anchors':
+        if (!activatedTabs.has('anchors')) return renderAnalysisPrompt('앵커', '$0.02+');
         return <AnchorDistribution target={analyzedDomain} />;
       case 'history':
+        if (!activatedTabs.has('history')) return renderAnalysisPrompt('히스토리', '$0.02+');
         return <HistoryChart target={analyzedDomain} />;
       case 'new-lost':
+        if (!activatedTabs.has('new-lost')) return renderAnalysisPrompt('New/Lost', '$0.02+');
         return <NewLostBacklinks target={analyzedDomain} />;
       case 'competitors':
+        if (!activatedTabs.has('competitors')) return renderAnalysisPrompt('경쟁사', '$0.02+');
         return <CompetitorAnalysis target={analyzedDomain} />;
       default:
         return null;
