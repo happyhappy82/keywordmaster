@@ -20,19 +20,19 @@ function LineChart({ data, width = 800, height = 300 }: {
     const chartWidth = width - padding.left - padding.right;
     const chartHeight = height - padding.top - padding.bottom;
 
-    const maxBacklinks = Math.max(...data.map(d => d.backlinks), 1);
-    const maxDomains = Math.max(...data.map(d => d.referring_domains), 1);
+    const maxBacklinks = Math.max(...data.map(d => d.backlinks ?? 0), 1);
+    const maxDomains = Math.max(...data.map(d => d.referring_domains ?? 0), 1);
 
     const xStep = data.length > 1 ? chartWidth / (data.length - 1) : chartWidth;
 
     const backlinkPoints = data.map((d, i) => ({
       x: padding.left + (data.length > 1 ? i * xStep : chartWidth / 2),
-      y: padding.top + chartHeight - (d.backlinks / maxBacklinks) * chartHeight,
+      y: padding.top + chartHeight - ((d.backlinks ?? 0) / maxBacklinks) * chartHeight,
     }));
 
     const domainPoints = data.map((d, i) => ({
       x: padding.left + (data.length > 1 ? i * xStep : chartWidth / 2),
-      y: padding.top + chartHeight - (d.referring_domains / maxDomains) * chartHeight,
+      y: padding.top + chartHeight - ((d.referring_domains ?? 0) / maxDomains) * chartHeight,
     }));
 
     const backlinkPath = backlinkPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');

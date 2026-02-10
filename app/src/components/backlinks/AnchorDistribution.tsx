@@ -37,7 +37,7 @@ export default function AnchorDistribution({ target }: AnchorDistributionProps) 
     );
   }
 
-  const maxBacklinks = Math.max(...data.items.map(a => a.backlinks));
+  const maxBacklinks = Math.max(...data.items.map(a => a.backlinks ?? 0));
   const colors = ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#f97316', '#eab308', '#22c55e', '#14b8a6'];
 
   return (
@@ -56,13 +56,13 @@ export default function AnchorDistribution({ target }: AnchorDistributionProps) 
         </h3>
         <div className="space-y-3">
           {data.items.map((item, i) => {
-            const pct = maxBacklinks > 0 ? (item.backlinks / maxBacklinks) * 100 : 0;
+            const pct = maxBacklinks > 0 ? ((item.backlinks ?? 0) / maxBacklinks) * 100 : 0;
             return (
               <div key={i} className="group">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-sm truncate max-w-[60%]">{item.anchor || '(empty)'}</span>
                   <div className="flex items-center gap-3 text-xs text-[var(--text-secondary)]">
-                    <span>{item.backlinks.toLocaleString()} 백링크</span>
+                    <span>{(item.backlinks ?? 0).toLocaleString()} 백링크</span>
                     <span>{item.domains?.toLocaleString() || item.referring_domains?.toLocaleString() || 0} 도메인</span>
                   </div>
                 </div>
@@ -104,7 +104,7 @@ export default function AnchorDistribution({ target }: AnchorDistributionProps) 
               {data.items.map((item, i) => (
                 <tr key={i} className="border-b border-[var(--border)]/50 hover:bg-[var(--border)]/30 transition-colors">
                   <td className="px-4 py-3 max-w-xs truncate">{item.anchor || '(empty)'}</td>
-                  <td className="px-4 py-3 text-center font-medium">{item.backlinks.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-center font-medium">{(item.backlinks ?? 0).toLocaleString()}</td>
                   <td className="px-4 py-3 text-center">{item.referring_domains?.toLocaleString() || 0}</td>
                   <td className="px-4 py-3 text-center text-emerald-400">{item.dofollow?.toLocaleString() || 0}</td>
                   <td className="px-4 py-3 text-center text-red-400">{item.nofollow?.toLocaleString() || 0}</td>

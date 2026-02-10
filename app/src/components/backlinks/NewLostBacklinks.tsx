@@ -21,7 +21,7 @@ function DualBarChart({ data, width = 800, height = 300 }: {
     const chartHeight = height - padding.top - padding.bottom;
 
     const maxVal = Math.max(
-      ...data.map(d => Math.max(d.new_backlinks, d.lost_backlinks)),
+      ...data.map(d => Math.max(d.new_backlinks ?? 0, d.lost_backlinks ?? 0)),
       1
     );
 
@@ -34,17 +34,17 @@ function DualBarChart({ data, width = 800, height = 300 }: {
       return {
         newBar: {
           x: groupX + gap,
-          y: padding.top + chartHeight - (d.new_backlinks / maxVal) * chartHeight,
+          y: padding.top + chartHeight - ((d.new_backlinks ?? 0) / maxVal) * chartHeight,
           width: barWidth,
-          height: (d.new_backlinks / maxVal) * chartHeight,
-          value: d.new_backlinks,
+          height: ((d.new_backlinks ?? 0) / maxVal) * chartHeight,
+          value: d.new_backlinks ?? 0,
         },
         lostBar: {
           x: groupX + barWidth + gap * 2,
-          y: padding.top + chartHeight - (d.lost_backlinks / maxVal) * chartHeight,
+          y: padding.top + chartHeight - ((d.lost_backlinks ?? 0) / maxVal) * chartHeight,
           width: barWidth,
-          height: (d.lost_backlinks / maxVal) * chartHeight,
-          value: d.lost_backlinks,
+          height: ((d.lost_backlinks ?? 0) / maxVal) * chartHeight,
+          value: d.lost_backlinks ?? 0,
         },
         labelX: groupX + barGroupWidth / 2,
         label: new Date(d.date).toLocaleDateString('ko-KR', { month: 'short' }),
@@ -147,8 +147,8 @@ export default function NewLostBacklinks({ target }: NewLostBacklinksProps) {
 
   const sortedData = [...data].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-  const totalNew = sortedData.reduce((s, d) => s + d.new_backlinks, 0);
-  const totalLost = sortedData.reduce((s, d) => s + d.lost_backlinks, 0);
+  const totalNew = sortedData.reduce((s, d) => s + (d.new_backlinks ?? 0), 0);
+  const totalLost = sortedData.reduce((s, d) => s + (d.lost_backlinks ?? 0), 0);
 
   return (
     <div className="space-y-6">
@@ -204,14 +204,14 @@ export default function NewLostBacklinks({ target }: NewLostBacklinksProps) {
             </thead>
             <tbody>
               {sortedData.slice().reverse().map((item, i) => {
-                const net = item.new_backlinks - item.lost_backlinks;
+                const net = (item.new_backlinks ?? 0) - (item.lost_backlinks ?? 0);
                 return (
                   <tr key={i} className="border-b border-[var(--border)]/50 hover:bg-[var(--border)]/30 transition-colors">
                     <td className="px-4 py-3 text-[var(--text-secondary)] whitespace-nowrap">
                       {new Date(item.date).toLocaleDateString('ko-KR')}
                     </td>
-                    <td className="px-4 py-3 text-center text-emerald-400">+{item.new_backlinks.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-center text-red-400">-{item.lost_backlinks.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-center text-emerald-400">+{(item.new_backlinks ?? 0).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-center text-red-400">-{(item.lost_backlinks ?? 0).toLocaleString()}</td>
                     <td className="px-4 py-3 text-center text-emerald-400">+{item.new_referring_domains?.toLocaleString() || 0}</td>
                     <td className="px-4 py-3 text-center text-red-400">-{item.lost_referring_domains?.toLocaleString() || 0}</td>
                     <td className={`px-4 py-3 text-center font-medium ${net >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>

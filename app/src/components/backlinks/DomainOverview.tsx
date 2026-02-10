@@ -99,16 +99,21 @@ export default function DomainOverview({ data, isLoading, error }: DomainOvervie
     { label: '스팸 점수', value: data.backlinks_spam_score, icon: Shield, renderValue: () => <SpamBadge score={data.backlinks_spam_score} /> },
   ];
 
+  // API 응답에서 실제 필드 매핑
+  const nofollowCount = data.nofollow ?? data.referring_links_attributes?.['nofollow'] ?? 0;
+  const dofollowCount = data.dofollow ?? (data.backlinks - nofollowCount);
+
   const followDistribution = [
-    { label: 'Dofollow', value: data.dofollow, color: '#10b981' },
-    { label: 'Nofollow', value: data.nofollow, color: '#ef4444' },
+    { label: 'Dofollow', value: Math.max(dofollowCount, 0), color: '#10b981' },
+    { label: 'Nofollow', value: nofollowCount, color: '#ef4444' },
   ];
 
+  const types = data.referring_links_types || {};
   const typeDistribution = [
-    { label: 'Anchor', value: data.anchor, color: '#6366f1' },
-    { label: 'Image', value: data.image, color: '#f59e0b' },
-    { label: 'Canonical', value: data.canonical, color: '#3b82f6' },
-    { label: 'Redirect', value: data.redirect, color: '#8b5cf6' },
+    { label: 'Anchor', value: data.anchor ?? types['anchor'] ?? 0, color: '#6366f1' },
+    { label: 'Image', value: data.image ?? types['image'] ?? 0, color: '#f59e0b' },
+    { label: 'Canonical', value: data.canonical ?? types['canonical'] ?? 0, color: '#3b82f6' },
+    { label: 'Redirect', value: data.redirect ?? types['redirect'] ?? 0, color: '#8b5cf6' },
   ];
 
   const topTlds = Object.entries(data.referring_links_tld || {})
