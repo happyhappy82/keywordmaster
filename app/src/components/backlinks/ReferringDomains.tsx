@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Globe, Loader2, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useReferringDomains } from '@/lib/hooks/useBacklinkAnalysis';
 import { RankBadge, SpamBadge } from './DomainOverview';
+import InfoTooltip from './InfoTooltip';
 
 interface ReferringDomainsProps {
   target: string | null;
@@ -61,12 +62,12 @@ export default function ReferringDomains({ target }: ReferringDomainsProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--border)] text-[var(--text-secondary)]">
-                <th className="text-left px-4 py-3 font-medium">도메인</th>
-                <th className="text-center px-4 py-3 font-medium">Rank</th>
-                <th className="text-center px-4 py-3 font-medium">백링크</th>
-                <th className="text-center px-4 py-3 font-medium">스팸 점수</th>
-                <th className="text-left px-4 py-3 font-medium">첫 발견</th>
-                <th className="text-left px-4 py-3 font-medium">마지막 확인</th>
+                <th className="text-left px-4 py-3 font-medium"><div className="flex items-center">도메인<InfoTooltip text="이 사이트에 백링크를 보내는 외부 도메인입니다. 하나의 도메인에서 여러 페이지를 통해 다수의 백링크를 보낼 수 있습니다. 참조 도메인 수가 많고 다양할수록 SEO에 유리합니다." /></div></th>
+                <th className="text-center px-4 py-3 font-medium"><div className="flex items-center justify-center">Rank<InfoTooltip text="해당 참조 도메인의 권위 점수입니다 (0~1,000). DataForSEO 기준. 높은 Rank의 도메인에서 오는 백링크가 SEO에 더 큰 영향을 미칩니다." /></div></th>
+                <th className="text-center px-4 py-3 font-medium"><div className="flex items-center justify-center">백링크<InfoTooltip text="해당 도메인에서 이 사이트로 보내는 백링크의 총 개수입니다. 하나의 도메인이 여러 페이지에서 링크를 걸 수 있습니다." /></div></th>
+                <th className="text-center px-4 py-3 font-medium"><div className="flex items-center justify-center">스팸 점수<InfoTooltip text="해당 도메인의 스팸 가능성을 나타내는 점수입니다 (0~100). Low(0~30): 안전한 도메인. Medium(31~60): 주의가 필요한 도메인. High(61~100): 스팸 위험이 높아 Google Search Console에서 disavow(거부) 신청을 고려해야 합니다." /></div></th>
+                <th className="text-left px-4 py-3 font-medium"><div className="flex items-center">첫 발견<InfoTooltip text="이 도메인에서의 백링크가 처음 발견된 날짜입니다. 오래 전부터 링크를 보내온 도메인은 안정적인 관계로 평가됩니다." /></div></th>
+                <th className="text-left px-4 py-3 font-medium"><div className="flex items-center">마지막 확인<InfoTooltip text="이 도메인의 백링크가 가장 최근에 확인(크롤링)된 날짜입니다. 오래 전이라면 해당 링크가 이미 삭제되었을 수 있습니다." /></div></th>
               </tr>
             </thead>
             <tbody>

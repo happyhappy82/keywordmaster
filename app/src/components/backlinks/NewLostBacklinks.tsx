@@ -3,6 +3,7 @@
 import React, { useMemo } from 'react';
 import { Loader2, AlertCircle, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { useNewLostBacklinks } from '@/lib/hooks/useBacklinkAnalysis';
+import InfoTooltip from './InfoTooltip';
 
 interface NewLostBacklinksProps {
   target: string | null;
@@ -157,14 +158,14 @@ export default function NewLostBacklinks({ target }: NewLostBacklinksProps) {
         <div className="bg-[var(--surface)] rounded-2xl border border-[var(--border)] p-5">
           <div className="flex items-center gap-2 text-emerald-400 mb-2">
             <ArrowUpRight size={18} />
-            <span className="text-sm">총 신규 백링크</span>
+            <span className="text-sm flex items-center">총 신규 백링크<InfoTooltip text="선택 기간 동안 새로 발견된 백링크의 총 합계입니다. 꾸준한 신규 백링크 유입은 사이트가 성장하고 있다는 긍정적 신호입니다." /></span>
           </div>
           <div className="text-2xl font-bold text-emerald-400">+{totalNew.toLocaleString()}</div>
         </div>
         <div className="bg-[var(--surface)] rounded-2xl border border-[var(--border)] p-5">
           <div className="flex items-center gap-2 text-red-400 mb-2">
             <ArrowDownRight size={18} />
-            <span className="text-sm">총 손실 백링크</span>
+            <span className="text-sm flex items-center">총 손실 백링크<InfoTooltip text="선택 기간 동안 사라진(삭제/접속불가) 백링크의 총 합계입니다. 일부 손실은 자연스럽지만, 신규보다 손실이 더 많으면 백링크 프로필이 약화되고 있다는 경고 신호입니다." /></span>
           </div>
           <div className="text-2xl font-bold text-red-400">-{totalLost.toLocaleString()}</div>
         </div>
@@ -173,7 +174,7 @@ export default function NewLostBacklinks({ target }: NewLostBacklinksProps) {
       {/* 차트 */}
       <div className="bg-[var(--surface)] rounded-2xl border border-[var(--border)] p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">신규 vs 손실 백링크</h3>
+          <h3 className="text-lg font-semibold flex items-center">신규 vs 손실 백링크<InfoTooltip text="월별 신규(초록) 백링크와 손실(빨강) 백링크를 비교한 차트입니다. 초록 바가 빨강 바보다 꾸준히 높으면 백링크 프로필이 성장하고 있는 것입니다. 반대라면 백링크가 줄어들고 있으므로 원인 파악이 필요합니다." /></h3>
           <div className="flex items-center gap-4 text-xs">
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded bg-emerald-500" />
@@ -194,12 +195,12 @@ export default function NewLostBacklinks({ target }: NewLostBacklinksProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--border)] text-[var(--text-secondary)]">
-                <th className="text-left px-4 py-3 font-medium">날짜</th>
-                <th className="text-center px-4 py-3 font-medium text-emerald-400">+신규 백링크</th>
-                <th className="text-center px-4 py-3 font-medium text-red-400">-손실 백링크</th>
-                <th className="text-center px-4 py-3 font-medium text-emerald-400">+신규 도메인</th>
-                <th className="text-center px-4 py-3 font-medium text-red-400">-손실 도메인</th>
-                <th className="text-center px-4 py-3 font-medium">순변동</th>
+                <th className="text-left px-4 py-3 font-medium"><div className="flex items-center">날짜<InfoTooltip text="백링크 변동이 기록된 날짜입니다. 보통 월 단위로 데이터가 제공됩니다." /></div></th>
+                <th className="text-center px-4 py-3 font-medium text-emerald-400"><div className="flex items-center justify-center">+신규 백링크<InfoTooltip text="해당 기간에 새로 발견된 백링크 수입니다." /></div></th>
+                <th className="text-center px-4 py-3 font-medium text-red-400"><div className="flex items-center justify-center">-손실 백링크<InfoTooltip text="해당 기간에 사라진 백링크 수입니다. 출처 페이지 삭제, 링크 제거, 사이트 폐쇄 등이 원인입니다." /></div></th>
+                <th className="text-center px-4 py-3 font-medium text-emerald-400"><div className="flex items-center justify-center">+신규 도메인<InfoTooltip text="해당 기간에 새롭게 이 사이트에 링크를 건 고유 도메인 수입니다. 새로운 도메인에서 링크가 오면 백링크 다양성이 향상됩니다." /></div></th>
+                <th className="text-center px-4 py-3 font-medium text-red-400"><div className="flex items-center justify-center">-손실 도메인<InfoTooltip text="해당 기간에 더 이상 링크를 보내지 않게 된 고유 도메인 수입니다." /></div></th>
+                <th className="text-center px-4 py-3 font-medium"><div className="flex items-center justify-center">순변동<InfoTooltip text="신규 백링크에서 손실 백링크를 뺀 순수 증감분입니다. 양수(+, 초록)면 백링크가 늘고 있고, 음수(-, 빨강)면 줄고 있는 것입니다." /></div></th>
               </tr>
             </thead>
             <tbody>

@@ -3,6 +3,7 @@
 import React from 'react';
 import { Loader2, AlertCircle, Anchor } from 'lucide-react';
 import { useAnchorTexts } from '@/lib/hooks/useBacklinkAnalysis';
+import InfoTooltip from './InfoTooltip';
 
 interface AnchorDistributionProps {
   target: string | null;
@@ -53,6 +54,7 @@ export default function AnchorDistribution({ target }: AnchorDistributionProps) 
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <Anchor size={18} className="text-[var(--primary)]" />
           앵커 텍스트 분포
+          <InfoTooltip text="앵커 텍스트란 백링크에 사용된 클릭 가능한 텍스트입니다. 예를 들어 '여기를 클릭'이라는 텍스트에 링크가 걸려있다면 '여기를 클릭'이 앵커 텍스트입니다. 타겟 키워드가 앵커에 포함되면 SEO에 유리하지만, 동일한 앵커가 너무 많으면 오히려 구글이 조작으로 판단할 수 있습니다. 자연스러운 앵커 텍스트 분포가 중요합니다." />
         </h3>
         <div className="space-y-3">
           {data.items.map((item, i) => {
@@ -93,11 +95,11 @@ export default function AnchorDistribution({ target }: AnchorDistributionProps) 
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--border)] text-[var(--text-secondary)]">
-                <th className="text-left px-4 py-3 font-medium">앵커 텍스트</th>
-                <th className="text-center px-4 py-3 font-medium">백링크</th>
-                <th className="text-center px-4 py-3 font-medium">참조 도메인</th>
-                <th className="text-center px-4 py-3 font-medium">Dofollow</th>
-                <th className="text-center px-4 py-3 font-medium">Nofollow</th>
+                <th className="text-left px-4 py-3 font-medium"><div className="flex items-center">앵커 텍스트<InfoTooltip text="백링크에 사용된 클릭 가능한 텍스트입니다. 같은 앵커 텍스트를 사용하는 백링크가 많을수록 해당 키워드로 인식됩니다. '(empty)'는 앵커 텍스트가 비어있는 경우입니다." /></div></th>
+                <th className="text-center px-4 py-3 font-medium"><div className="flex items-center justify-center">백링크<InfoTooltip text="이 앵커 텍스트를 사용한 백링크의 총 개수입니다. 동일 앵커가 많을수록 해당 키워드와의 연관성이 강해지지만, 과도하게 많으면 비자연스러운 링크로 판단될 수 있습니다." /></div></th>
+                <th className="text-center px-4 py-3 font-medium"><div className="flex items-center justify-center">참조 도메인<InfoTooltip text="이 앵커 텍스트로 백링크를 보내는 고유 도메인 수입니다. 다양한 도메인에서 같은 앵커를 사용할수록 자연스러운 링크입니다." /></div></th>
+                <th className="text-center px-4 py-3 font-medium"><div className="flex items-center justify-center">Dofollow<InfoTooltip text="검색엔진이 따라가는(SEO 가치가 전달되는) 링크 중 이 앵커를 사용한 개수입니다. Dofollow 백링크가 많을수록 SEO 효과가 큽니다." /></div></th>
+                <th className="text-center px-4 py-3 font-medium"><div className="flex items-center justify-center">Nofollow<InfoTooltip text="검색엔진에게 '따라가지 말 것'을 요청하는 링크 중 이 앵커를 사용한 개수입니다. 직접적 SEO 효과는 제한적이지만 트래픽 유입에는 도움됩니다." /></div></th>
               </tr>
             </thead>
             <tbody>

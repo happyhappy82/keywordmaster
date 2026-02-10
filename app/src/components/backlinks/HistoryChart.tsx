@@ -3,6 +3,7 @@
 import React, { useMemo } from 'react';
 import { Loader2, AlertCircle, TrendingUp } from 'lucide-react';
 import { useBacklinkHistory } from '@/lib/hooks/useBacklinkAnalysis';
+import InfoTooltip from './InfoTooltip';
 
 interface HistoryChartProps {
   target: string | null;
@@ -149,6 +150,7 @@ export default function HistoryChart({ target }: HistoryChartProps) {
           <h3 className="text-lg font-semibold flex items-center gap-2">
             <TrendingUp size={18} className="text-[var(--primary)]" />
             백링크 히스토리
+            <InfoTooltip text="시간에 따른 백링크 수와 참조 도메인 수의 변화 추이입니다. 실선(파랑)이 총 백링크 수, 점선(초록)이 참조 도메인 수입니다. 꾸준히 우상향하는 그래프가 이상적이며, 급격한 증가나 감소는 스팸 링크 유입이나 링크 삭제를 의미할 수 있습니다." />
           </h3>
           <div className="flex items-center gap-4 text-xs">
             <div className="flex items-center gap-1.5">
@@ -170,12 +172,12 @@ export default function HistoryChart({ target }: HistoryChartProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--border)] text-[var(--text-secondary)]">
-                <th className="text-left px-4 py-3 font-medium">날짜</th>
-                <th className="text-center px-4 py-3 font-medium">Rank</th>
-                <th className="text-center px-4 py-3 font-medium">백링크</th>
-                <th className="text-center px-4 py-3 font-medium">참조 도메인</th>
-                <th className="text-center px-4 py-3 font-medium text-emerald-400">+신규</th>
-                <th className="text-center px-4 py-3 font-medium text-red-400">-손실</th>
+                <th className="text-left px-4 py-3 font-medium"><div className="flex items-center">날짜<InfoTooltip text="DataForSEO가 해당 도메인의 백링크 현황을 기록한 날짜입니다. 보통 월 단위로 스냅샷이 저장됩니다." /></div></th>
+                <th className="text-center px-4 py-3 font-medium"><div className="flex items-center justify-center">Rank<InfoTooltip text="해당 시점의 도메인 권위 점수입니다 (0~1,000). 시간에 따라 Rank가 어떻게 변하는지 추적할 수 있습니다." /></div></th>
+                <th className="text-center px-4 py-3 font-medium"><div className="flex items-center justify-center">백링크<InfoTooltip text="해당 시점의 총 백링크 수입니다. 이전 달과 비교하여 증감을 파악할 수 있습니다." /></div></th>
+                <th className="text-center px-4 py-3 font-medium"><div className="flex items-center justify-center">참조 도메인<InfoTooltip text="해당 시점의 총 참조 도메인 수입니다. 백링크 수보다 참조 도메인 수의 증가가 SEO에 더 의미 있습니다." /></div></th>
+                <th className="text-center px-4 py-3 font-medium text-emerald-400"><div className="flex items-center justify-center">+신규<InfoTooltip text="해당 기간에 새로 발견된 백링크 수입니다. 양질의 콘텐츠나 마케팅 활동의 결과로 신규 백링크가 꾸준히 늘어나는 것이 이상적입니다." /></div></th>
+                <th className="text-center px-4 py-3 font-medium text-red-400"><div className="flex items-center justify-center">-손실<InfoTooltip text="해당 기간에 사라진(삭제되거나 접속 불가된) 백링크 수입니다. 자연적으로 일부 손실은 정상이지만, 대량 손실은 출처 사이트의 폐쇄나 링크 정리를 의미할 수 있습니다." /></div></th>
               </tr>
             </thead>
             <tbody>
